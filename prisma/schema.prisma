@@ -1,0 +1,52 @@
+// Prisma schema for the Intelligent Media Processing Pipeline
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ImageStatus {
+  pending
+  processing
+  completed
+  failed
+}
+
+// One row per uploaded image. This is the source of truth for
+// upload metadata + processing lifecycle. The heavy analysis output
+// is stored as JSON in `analysisResult` rather than being fully
+// normalized -- see README "Trade-offs" for why.
+model Image {
+  id             String      @id @default(uuid())
+  originalName   String
+  storedFilename String
+  storagePath    String
+  mimeType       String
+  sizeBytes      Int
+
+  status         ImageStatus @default(pending)
+  failureReason  String?
+  attempts       Int         @default(0)
+
+  // Hashes used for duplicate detection.
+  // sha256Hash catches byte-for-byte duplicate uploads (cheap, exact).
+  // perceptualHash (aHash) catches near-duplicates / re-encodes / resized copies.
+  sha256Hash      String
+  perceptualHash  String?
+
+  // Structured analysis output, one entry per check. Shape documented in
+  // src/analysis/index.ts -> AnalysisReport.
+  analysisResult  Json?
+
+  uploadedAt      DateTime  @default(now())
+  processingStartedAt DateTime?
+  processedAt     DateTime?
+
+  @@index([status])
+  @@index([sha256Hash])
+  @@index([perceptualHash])
+}
