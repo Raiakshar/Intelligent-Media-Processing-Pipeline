@@ -15,6 +15,8 @@ export async function uploadImage(req: Request, res: Response) {
       storagePath: req.file.path,
       mimeType: req.file.mimetype,
       sizeBytes: req.file.size,
+      analysisFilePath: (req.file as any).analysisFilePath,
+      storageUrl: (req.file as any).storageUrl,
     });
 
     // Return the processing ID immediately -- analysis has NOT run yet.

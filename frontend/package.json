@@ -10,5 +10,8 @@
   },
   "devDependencies": {
     "vite": "^8.1.1"
+  },
+  "dependencies": {
+    "ogl": "^1.0.11"
   }
 }

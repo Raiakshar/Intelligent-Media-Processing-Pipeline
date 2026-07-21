@@ -11,7 +11,11 @@ import {
   getImageResults,
   getImageFailure,
   healthCheck,
+  API_BASE,
 } from './api.js';
+import { initGrainient } from './Grainient.js';
+
+let grainientInstance = null;
 
 /* ----------------------------------------------------------
    State
@@ -229,6 +233,38 @@ function renderApp() {
   bindEvents();
   checkSystemHealth();
   loadInspectionData();
+
+  // Initialize WebGL animated background in the upload studio
+  const studio = document.getElementById('upload-studio');
+  if (studio) {
+    if (grainientInstance) {
+      grainientInstance.destroy();
+    }
+    grainientInstance = initGrainient(studio, {
+      color1: "#FF9FFC",
+      color2: "#5227FF",
+      color3: "#B497CF",
+      timeSpeed: 0.25,
+      colorBalance: 0,
+      warpStrength: 1,
+      warpFrequency: 5,
+      warpSpeed: 2,
+      warpAmplitude: 50,
+      blendAngle: 0,
+      blendSoftness: 0.05,
+      rotationAmount: 500,
+      noiseScale: 2,
+      grainAmount: 0.1,
+      grainScale: 2,
+      grainAnimated: false,
+      contrast: 1.5,
+      gamma: 1,
+      saturation: 1,
+      centerX: 0,
+      centerY: 0,
+      zoom: 0.9
+    });
+  }
 }
 
 /* ----------------------------------------------------------
@@ -296,7 +332,7 @@ function renderVehicleCard(img) {
   return `
     <div class="vehicle-card" onclick="window.__openForensicModal('${img.id}')">
       <div class="card-viewport">
-        <img src="http://localhost:3000/uploads/${img.storedFilename}" alt="${img.originalName}"
+        <img src="${API_BASE}/uploads/${img.storedFilename}" alt="${img.originalName}"
              onerror="this.style.display='none';" />
         <span class="card-status-pill ${img.status}">${img.status}</span>
         ${plateBadgeHtml}
@@ -357,7 +393,7 @@ async function openForensicModal(imageId) {
   if (img.status === 'pending' || img.status === 'processing') {
     splitBody.innerHTML = `
       <div class="pane-viewport">
-        <img class="inspection-canvas" src="http://localhost:3000/uploads/${img.storedFilename}" />
+        <img class="inspection-canvas" src="${API_BASE}/uploads/${img.storedFilename}" />
         <div class="file-info-table">
           <div><div class="info-cell-label">FILE SIZE</div><div class="info-cell-val">${formatBytes(img.sizeBytes)}</div></div>
           <div><div class="info-cell-label">MIME TYPE</div><div class="info-cell-val">${img.mimeType}</div></div>
@@ -379,7 +415,7 @@ async function openForensicModal(imageId) {
     try { failure = await getImageFailure(imageId); } catch { /* ignore */ }
     splitBody.innerHTML = `
       <div class="pane-viewport">
-        <img class="inspection-canvas" src="http://localhost:3000/uploads/${img.storedFilename}" />
+        <img class="inspection-canvas" src="${API_BASE}/uploads/${img.storedFilename}" />
       </div>
       <div class="pane-diagnostics">
         <div style="background: var(--status-fail-bg); border: 1px solid var(--status-fail-border); padding: 1.25rem; border-radius: 10px; color: var(--status-fail);">
@@ -438,7 +474,7 @@ async function openForensicModal(imageId) {
 
     splitBody.innerHTML = `
       <div class="pane-viewport">
-        <img class="inspection-canvas" src="http://localhost:3000/uploads/${img.storedFilename}" />
+        <img class="inspection-canvas" src="${API_BASE}/uploads/${img.storedFilename}" />
         <div class="file-info-table">
           <div><div class="info-cell-label">FILE SIZE</div><div class="info-cell-val">${formatBytes(img.sizeBytes)}</div></div>
           <div><div class="info-cell-label">MIME TYPE</div><div class="info-cell-val">${img.mimeType}</div></div>

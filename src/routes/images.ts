@@ -11,7 +11,7 @@ import {
 const router = Router();
 
 // POST /images  (multipart/form-data, field name: "image")
-router.post('/', upload.single('image'), uploadImage);
+router.post('/', (req, res, next) => upload(req, res, next), uploadImage);
 
 // GET /images?status=pending&limit=20&offset=0
 router.get('/', listImagesHandler);

@@ -1,4 +1,6 @@
+import fs from 'fs';
 import { prisma } from '../db';
+import { runAnalysis } from '../analysis';
 import { imageAnalysisQueue } from '../queue/queue';
 import { sha256File, perceptualHash as computePHash } from '../utils/hash';
 import { logger } from '../utils/logger';
@@ -9,28 +11,52 @@ export interface UploadedFileInfo {
   storagePath: string;
   mimeType: string;
   sizeBytes: number;
+  analysisFilePath?: string;
+  storageUrl?: string;
+}
+
+async function processImageAnalysis(imageId: string, storagePath: string, sha256Hash: string, perceptualHashValue: string | null) {
+  await prisma.image.update({
+    where: { id: imageId },
+    data: {
+      status: 'processing',
+      processingStartedAt: new Date(),
+      attempts: { increment: 1 },
+    },
+  });
+
+  const report = await runAnalysis({
+    imageId,
+    filePath: storagePath,
+    sha256Hash,
+    perceptualHash: perceptualHashValue,
+  });
+
+  await prisma.image.update({
+    where: { id: imageId },
+    data: {
+      status: 'completed',
+      processedAt: new Date(),
+      analysisResult: report as any,
+    },
+  });
 }
 
 /**
- * Creates the DB row for an uploaded image, enqueues the async analysis
- * job, and returns the row. Perceptual hashing happens synchronously
- * here (before enqueue) rather than in the worker, because the
- * duplicate-detection check inside the job needs it available for
- * *other* jobs to compare against as soon as possible -- if we deferred
- * it to the worker, two images uploaded back-to-back could race and
- * neither would see the other's hash yet. Hashing a single image is
- * fast (<50ms typically); OCR is the actually slow part, and that stays
- * in the async job.
+ * Creates the DB row for an uploaded image and either enqueues the async
+ * analysis job (local development) or processes it inline in the request
+ * when running in Vercel/serverless mode.
  */
 export async function createImageRecord(file: UploadedFileInfo) {
-  const sha256Hash = sha256File(file.storagePath);
+  const analysisFilePath = file.analysisFilePath || file.storagePath;
+  const storagePathForDb = file.storageUrl || file.storagePath;
+
+  const sha256Hash = sha256File(analysisFilePath);
 
   let perceptualHashValue: string | null = null;
   try {
-    perceptualHashValue = await computePHash(file.storagePath);
+    perceptualHashValue = await computePHash(analysisFilePath);
   } catch (err) {
-    // Non-fatal: some inputs (e.g. corrupt image) may fail hashing.
-    // Duplicate detection will simply skip the near-duplicate tier.
     logger.warn('perceptual hash computation failed', { error: String(err) });
   }
 
@@ -38,7 +64,7 @@ export async function createImageRecord(file: UploadedFileInfo) {
     data: {
       originalName: file.originalName,
       storedFilename: file.storedFilename,
-      storagePath: file.storagePath,
+      storagePath: storagePathForDb,
       mimeType: file.mimeType,
       sizeBytes: file.sizeBytes,
       sha256Hash,
@@ -47,13 +73,40 @@ export async function createImageRecord(file: UploadedFileInfo) {
     },
   });
 
-  await imageAnalysisQueue.add(
-    'analyze',
-    { imageId: image.id },
-    { jobId: image.id } // idempotency: one job per image id, prevents accidental double-enqueue
-  );
+  const isVercelRuntime = Boolean(process.env.VERCEL);
 
-  logger.info('image uploaded and queued', { imageId: image.id, originalName: file.originalName });
+  if (isVercelRuntime) {
+    try {
+      await processImageAnalysis(image.id, analysisFilePath, sha256Hash, perceptualHashValue);
+      logger.info('image processed inline for vercel deployment', { imageId: image.id, originalName: file.originalName });
+    } catch (err) {
+      logger.error('inline image processing failed', { imageId: image.id, error: String(err) });
+      await prisma.image.update({
+        where: { id: image.id },
+        data: {
+          status: 'failed',
+          failureReason: err instanceof Error ? err.message : String(err),
+          processedAt: new Date(),
+        },
+      });
+    }
+  } else if (imageAnalysisQueue) {
+    await imageAnalysisQueue.add(
+      'analyze',
+      { imageId: image.id },
+      { jobId: image.id }
+    );
+
+    logger.info('image uploaded and queued', { imageId: image.id, originalName: file.originalName });
+  }
+
+  if (file.analysisFilePath && file.analysisFilePath !== file.storagePath) {
+    try {
+      fs.unlinkSync(file.analysisFilePath);
+    } catch (cleanupErr) {
+      logger.warn('temp upload cleanup failed', { error: String(cleanupErr) });
+    }
+  }
 
   return image;
 }

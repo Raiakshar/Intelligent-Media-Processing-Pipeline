@@ -33,10 +33,12 @@ export async function perceptualHash(filePath: string): Promise<string> {
 
   const pixels = Array.from(data);
   const mean = pixels.reduce((a, b) => a + b, 0) / pixels.length;
+  const brightnessBias = mean < 128 ? 1 : 0;
 
   let bits = '';
   for (const p of pixels) {
-    bits += p >= mean ? '1' : '0';
+    const bit = p >= mean ? '1' : '0';
+    bits += brightnessBias === 1 ? (bit === '1' ? '0' : '1') : bit;
   }
 
   // Pack the 64-bit binary string into a hex string.

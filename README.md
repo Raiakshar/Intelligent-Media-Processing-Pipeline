@@ -4,6 +4,20 @@ An end-to-end, asynchronous media processing system and interactive visual dashb
 
 Designed to handle high-concurrency vehicle image uploads, queuing them for distributed computer vision analysis to automatically extract and validate vehicle registration plates, detect quality issues (blur, lighting anomalies), identify duplicate submissions, inspect photo tampering, and verify metadata integrity in real time.
 
+## Vercel deployment notes
+
+- The API now serves uploads through the same route prefix used by the deployed frontend, so image URLs resolve correctly after deployment.
+- In Vercel, uploads are processed inline in the request lifecycle instead of relying on a local Redis worker process.
+- Configure these environment variables in Vercel:
+  - DATABASE_URL
+  - VITE_API_BASE_URL (optional, defaults to /api)
+  - MAX_UPLOAD_SIZE_MB (optional)
+
+### Deploy steps
+1. Run `npm run build` locally to verify the backend bundle.
+2. Deploy the repository to Vercel.
+3. Run `npx prisma migrate deploy` in the Vercel build environment or in a separate one-off job.
+
 ---
 
 ## Project Outcomes & System Screenshots

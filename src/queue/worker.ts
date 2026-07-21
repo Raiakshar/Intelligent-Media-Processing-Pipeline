@@ -63,6 +63,10 @@ async function processJob(job: Job<ImageAnalysisJobData>) {
   });
 }
 
+if (!redisConnection) {
+  throw new Error('Redis connection is required for the worker process');
+}
+
 const worker = new Worker<ImageAnalysisJobData>(
   IMAGE_ANALYSIS_QUEUE,
   processJob,

@@ -285,7 +285,9 @@ body::after {
   max-width: 720px;
   margin: 0 auto;
   position: relative;
-  background: var(--bg-surface);
+  background: rgba(15, 21, 34, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px dashed var(--border-strong);
   border-radius: 14px;
   padding: 3.5rem 2rem;
@@ -307,7 +309,9 @@ body::after {
 .upload-studio:hover,
 .upload-studio.drag-over {
   border-color: var(--accent-cyan);
-  background: var(--bg-surface-elevated);
+  background: rgba(22, 30, 48, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   box-shadow: var(--shadow-cyan);
   transform: translateY(-2px);
 }

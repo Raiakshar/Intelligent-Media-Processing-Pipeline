@@ -2,7 +2,7 @@
    API Client — Talks to the media-pipeline Express backend
    ============================================================ */
 
-const API_BASE = 'http://localhost:3000';
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 
 /**
  * Upload a single image file.
