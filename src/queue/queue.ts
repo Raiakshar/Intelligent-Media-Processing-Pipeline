@@ -3,11 +3,13 @@ import IORedis from 'ioredis';
 import { config } from '../config';
 
 // BullMQ requires this option on the ioredis connection.
-export const redisConnection = new IORedis({
-  host: config.redis.host,
-  port: config.redis.port,
-  maxRetriesPerRequest: null,
-});
+export const redisConnection = process.env.REDIS_URL
+  ? new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null })
+  : new IORedis({
+      host: config.redis.host,
+      port: config.redis.port,
+      maxRetriesPerRequest: null,
+    });
 
 export const IMAGE_ANALYSIS_QUEUE = 'image-analysis';
 
