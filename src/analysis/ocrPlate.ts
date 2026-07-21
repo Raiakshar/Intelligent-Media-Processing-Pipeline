@@ -1,15 +1,5 @@
 import { createWorker } from 'tesseract.js';
 import { CheckResult } from './types';
-
-// Standard Indian registration plate format: SS DD LL(L) DDDD
-//   SS   = 2-letter state code (e.g. KA, MH, DL)
-//   DD   = 2-digit RTO code
-//   L(L) = 1 or 2 letter series
-//   DDDD = 4-digit unique number
-// Allows an optional space/hyphen between groups since OCR + real plates
-// are inconsistent about separators.
-import { createWorker } from 'tesseract.js';
-import { CheckResult } from './types';
 import { sha256File } from '../utils/hash';
 
 // Standard Indian registration plate format: SS DD LL(L) DDDD
