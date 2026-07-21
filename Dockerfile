@@ -12,8 +12,15 @@ RUN npm install
 
 COPY . .
 
+# DATABASE_URL is required for `prisma generate` and the build step to run,
+# but the real value isn't available until runtime. Accept it as a build
+# arg (Railway can pass the real value via --build-arg), falling back to a
+# dummy connection string so the build can still succeed without it.
+ARG DATABASE_URL
+ENV DATABASE_URL=${DATABASE_URL:-postgresql://dummy:dummy@localhost:5432/dummy}
+
 RUN npx prisma generate
-RUN npm run build
+RUN npm run build && test -f dist/server.js || (echo "Build failed: dist/server.js not found" && exit 1)
 
 EXPOSE 3000
 
