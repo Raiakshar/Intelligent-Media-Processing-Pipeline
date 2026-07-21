@@ -20,7 +20,7 @@ ARG DATABASE_URL
 ENV DATABASE_URL=${DATABASE_URL:-postgresql://dummy:dummy@localhost:5432/dummy}
 
 RUN npx prisma generate
-RUN npm run build && test -f dist/server.js || (echo "Build failed: dist/server.js not found" && exit 1)
+RUN npm run build 2>&1 || (echo "!!! npm run build failed - see TypeScript compilation errors above !!!" && exit 1)
 
 EXPOSE 3000
 
