@@ -1,5 +1,6 @@
 /* ============================================================
-   Media Pipeline — Frontend Application
+    — Vehicle Computer Vision & License Plate Inspection Platform
+   Full Single-Page Application Module
    ============================================================ */
 
 import './style.css';
@@ -27,7 +28,7 @@ const state = {
 };
 
 /* ----------------------------------------------------------
-   Utility Helpers
+   Helpers
    ---------------------------------------------------------- */
 function formatBytes(bytes) {
   if (bytes === 0) return '0 B';
@@ -39,276 +40,288 @@ function formatBytes(bytes) {
 
 function timeAgo(date) {
   const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
-  if (seconds < 60) return 'just now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  return `${Math.floor(seconds / 86400)}d ago`;
+  if (seconds < 60) return 'JUST NOW';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}M AGO`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}H AGO`;
+  return `${Math.floor(seconds / 86400)}D AGO`;
 }
 
 function formatCheckName(name) {
-  return name
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function getScoreColor(score) {
-  if (score >= 0.85) return 'var(--color-success)';
-  if (score >= 0.6) return 'var(--color-warning)';
-  return 'var(--color-error)';
-}
-
-function getCheckIcon(check) {
-  const icons = {
-    blur_detection: '🔍',
-    brightness_analysis: '☀️',
-    dimension_validation: '📐',
-    duplicate_detection: '👯',
-    screenshot_rephoto_heuristic: '📱',
-    metadata_analysis: '🏷️',
-    tampering_heuristic: '🔧',
-    ocr_plate_validation: '🔤',
+  const names = {
+    ocr_plate_validation: 'ALPR License Plate OCR',
+    blur_detection: 'Laplacian Blur Detection',
+    brightness_analysis: 'Grayscale Luminance',
+    dimension_validation: 'Resolution Bounds',
+    duplicate_detection: 'SHA256 & aHash Duplicates',
+    screenshot_rephoto_heuristic: 'Screenshot Heuristics',
+    metadata_analysis: 'EXIF Integrity',
+    tampering_heuristic: 'ELA Tampering Analysis',
   };
-  return icons[check.check] || '🔎';
+  return names[name] || name.replace(/_/g, ' ').toUpperCase();
+}
+
+function extractPlateData(imageRecord) {
+  const checks = imageRecord.analysisResult?.checks || [];
+  const ocrCheck = checks.find((c) => c.check === 'ocr_plate_validation');
+  if (ocrCheck && ocrCheck.passed && ocrCheck.details?.extractedPlate) {
+    return {
+      plate: ocrCheck.details.extractedPlate,
+      state: ocrCheck.details.stateCode || '',
+      rto: ocrCheck.details.rtoCode || '',
+      series: ocrCheck.details.seriesCode || '',
+      number: ocrCheck.details.uniqueNumber || '',
+    };
+  }
+  return null;
 }
 
 /* ----------------------------------------------------------
-   Toast Notifications
+   Toast Stack
    ---------------------------------------------------------- */
 function showToast(message, type = 'info') {
-  const container = document.getElementById('toast-container');
-  const icons = { success: '✓', error: '✕', info: 'ℹ' };
+  const container = document.getElementById('toast-stack');
+  if (!container) return;
 
   const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
+  toast.className = `toast-item ${type}`;
   toast.innerHTML = `
-    <span class="toast-icon">${icons[type] || 'ℹ'}</span>
-    <span class="toast-message">${message}</span>
-    <button class="toast-dismiss" onclick="this.parentElement.remove()">✕</button>
+    <span>${type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ'}</span>
+    <span style="flex:1;">${message}</span>
   `;
 
   container.appendChild(toast);
-  setTimeout(() => toast.remove(), 5000);
+  setTimeout(() => toast.remove(), 4500);
 }
 
 /* ----------------------------------------------------------
-   Render: Full Page
+   Render Main Application Frame
    ---------------------------------------------------------- */
 function renderApp() {
   const app = document.getElementById('app');
   app.innerHTML = `
-    <!-- Navbar -->
+    <!-- Top Telemetry Navbar -->
     <nav class="navbar">
       <div class="container">
-        <div class="navbar-brand">
-          <div class="navbar-logo">🔬</div>
-          <div>
-            <span class="navbar-title">Media Pipeline</span>
-            <span class="navbar-subtitle">Vehicle Image Analysis</span>
+        <div class="brand-block">
+          <div class="brand-icon">A</div>
+          <div class="brand-text">
+            <span class="brand-title">
+              Intelligent analizer
+            </span>
+            <span class="brand-subtitle">Vehicle Vision & Quality Inspection System</span>
           </div>
         </div>
-        <div class="navbar-status">
-          <span class="status-dot" id="status-dot"></span>
-          <span id="status-text">Checking...</span>
+        <div class="telemetry-status">
+          <div class="status-indicator">
+            <span class="status-dot" id="status-dot"></span>
+            <span id="status-text">CONNECTING</span>
+          </div>
         </div>
       </div>
     </nav>
 
-    <!-- Hero / Upload -->
+    <!-- Hero Studio Header & Reticle Upload Zone -->
     <section class="hero-section">
       <div class="container">
-        <h1 class="hero-title">
-          Intelligent <span class="gradient-text">Image Analysis</span>
-        </h1>
-        <p class="hero-description">
-          Upload vehicle images for automated quality checks — blur detection, brightness analysis,
-          duplicate detection, OCR plate validation, tampering heuristics, and more.
-        </p>
+        <div class="hero-header">
+          <div class="hero-badge">
+             ASYNCHRONOUS DEEP FORENSICS & ALPR ENGINE
+          </div>
+          <h1 class="hero-title">
+            Automated Vehicle <span>Inspection & Plate Recognition</span>
+          </h1>
+          <p class="hero-desc">
+            High-concurrency media processing pipeline featuring Laplacian blur checks, ELA tampering analysis, near-duplicate hashing, and full Indian registration plate OCR.
+          </p>
+        </div>
 
-        <div class="upload-zone" id="upload-zone">
-          <div class="upload-zone-content">
-            <div class="upload-icon">📤</div>
-            <div class="upload-title">Drop image here or click to browse</div>
-            <div class="upload-subtitle">Max 15 MB per file</div>
-            <div class="upload-formats">
-              <span class="format-badge">JPEG</span>
-              <span class="format-badge">PNG</span>
-              <span class="format-badge">WebP</span>
+        <!-- Upload Studio Box -->
+        <div class="upload-studio" id="upload-studio">
+          <div class="corner-reticle reticle-tl"></div>
+          <div class="corner-reticle reticle-tr"></div>
+          <div class="corner-reticle reticle-bl"></div>
+          <div class="corner-reticle reticle-br"></div>
+
+          <div class="studio-content">
+            <div class="upload-icon-wrapper">📷</div>
+            <div class="upload-heading">Drop Vehicle Media to Inspect</div>
+            <div class="upload-sub">SUPPORTED INPUTS UP TO 15MB MAX</div>
+            <div class="format-tags">
+              <span class="tag-spec">JPEG</span>
+              <span class="tag-spec">PNG</span>
+              <span class="tag-spec">WEBP</span>
             </div>
           </div>
           <input type="file" class="upload-input" id="upload-input" accept="image/jpeg,image/png,image/webp" />
         </div>
 
-        <div class="upload-progress" id="upload-progress">
-          <div class="progress-bar-container">
-            <div class="progress-bar" id="progress-bar"></div>
+        <!-- Velocity Progress Meter -->
+        <div class="upload-velocity-bar" id="upload-velocity-bar">
+          <div class="meter-track">
+            <div class="meter-fill" id="meter-fill"></div>
           </div>
-          <div class="progress-text" id="progress-text">Uploading...</div>
+          <div class="meter-label">
+            <span id="meter-status-text">INGESTING FILE...</span>
+            <span id="meter-pct">0%</span>
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- Dashboard -->
-    <section class="images-section">
-      <div class="container">
-        <!-- Stats -->
-        <div class="stats-bar" id="stats-bar">
-          <div class="stat-card">
-            <div class="stat-value" id="stat-total">—</div>
-            <div class="stat-label">Total Images</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="stat-completed" style="color: var(--color-success)">—</div>
-            <div class="stat-label">Completed</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="stat-flagged" style="color: var(--color-warning)">—</div>
-            <div class="stat-label">Flagged</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="stat-pending" style="color: var(--color-pending)">—</div>
-            <div class="stat-label">In Queue</div>
-          </div>
+    <!-- Metrics Telemetry Dashboard -->
+    <section class="container">
+      <div class="metrics-strip">
+        <div class="metric-box total">
+          <div class="metric-num" id="m-total">0</div>
+          <div class="metric-label">Total Audited</div>
         </div>
-
-        <!-- Controls -->
-        <div class="controls-bar">
-          <div class="filter-group" id="filter-group">
-            <button class="filter-btn active" data-filter="">All</button>
-            <button class="filter-btn" data-filter="pending">Pending</button>
-            <button class="filter-btn" data-filter="processing">Processing</button>
-            <button class="filter-btn" data-filter="completed">Completed</button>
-            <button class="filter-btn" data-filter="failed">Failed</button>
-          </div>
-          <button class="refresh-btn" id="refresh-btn">
-            <span class="refresh-icon">↻</span> Refresh
-          </button>
+        <div class="metric-box pass">
+          <div class="metric-num" id="m-completed" style="color: var(--status-pass)">0</div>
+          <div class="metric-label">Clean Submissions</div>
         </div>
-
-        <!-- Image Grid -->
-        <div class="image-grid" id="image-grid"></div>
-
-        <!-- Pagination -->
-        <div class="pagination" id="pagination"></div>
+        <div class="metric-box warn">
+          <div class="metric-num" id="m-flagged" style="color: var(--status-warn)">0</div>
+          <div class="metric-label">Flagged Issues</div>
+        </div>
+        <div class="metric-box pending">
+          <div class="metric-num" id="m-queue" style="color: var(--status-pending)">0</div>
+          <div class="metric-label">Active Queue Depth</div>
+        </div>
       </div>
+
+      <!-- Controls & Toolbar -->
+      <div class="controls-toolbar">
+        <div class="filter-segments" id="filter-segments">
+          <button class="segment-btn active" data-filter="">ALL RECORDS</button>
+          <button class="segment-btn" data-filter="pending">PENDING</button>
+          <button class="segment-btn" data-filter="processing">PROCESSING</button>
+          <button class="segment-btn" data-filter="completed">COMPLETED</button>
+          <button class="segment-btn" data-filter="failed">FAILED</button>
+        </div>
+        <button class="refresh-trigger" id="refresh-trigger">
+          <span class="refresh-icon">↻</span> RE-SYNC DATA
+        </button>
+      </div>
+
+      <!-- Vehicle Cards Inspection Grid -->
+      <div class="inspection-grid" id="inspection-grid"></div>
     </section>
 
-    <!-- Detail Modal -->
+    <!-- Split-Pane Forensic Modal Studio -->
     <div class="modal-overlay" id="modal-overlay">
-      <div class="modal">
-        <div class="modal-header">
-          <h2 class="modal-title" id="modal-title">Image Details</h2>
-          <button class="modal-close" id="modal-close">✕</button>
+      <div class="modal-window">
+        <div class="modal-header-bar">
+          <div class="modal-title-wrap">
+            <span class="modal-title-text" id="modal-filename">INSPECTION FILE DETAILS</span>
+          </div>
+          <button class="modal-close-trigger" id="modal-close">✕</button>
         </div>
-        <div class="modal-body" id="modal-body">
+        <div class="modal-split-body" id="modal-split-body">
           <!-- Filled dynamically -->
         </div>
       </div>
     </div>
 
-    <!-- Toast container -->
-    <div class="toast-container" id="toast-container"></div>
+    <!-- Toast Stack -->
+    <div class="toast-stack" id="toast-stack"></div>
   `;
 
   bindEvents();
-  checkHealth();
-  loadImages();
+  checkSystemHealth();
+  loadInspectionData();
 }
 
 /* ----------------------------------------------------------
-   Render: Image Grid
+   Render: Grid & Vehicle Cards
    ---------------------------------------------------------- */
-function renderImageGrid() {
-  const grid = document.getElementById('image-grid');
+function renderInspectionGrid() {
+  const grid = document.getElementById('inspection-grid');
 
   if (state.isLoading) {
-    grid.innerHTML = Array(4)
-      .fill('<div class="skeleton skeleton-card"></div>')
+    grid.innerHTML = Array(6)
+      .fill('<div class="skeleton-card"></div>')
       .join('');
     return;
   }
 
   if (state.images.length === 0) {
     grid.innerHTML = `
-      <div class="empty-state" style="grid-column: 1 / -1">
-        <div class="empty-icon">📭</div>
-        <div class="empty-title">No images found</div>
-        <div class="empty-subtitle">
-          ${state.filter ? 'Try a different filter or upload a new image.' : 'Upload your first vehicle image to get started.'}
-        </div>
+      <div style="grid-column: 1 / -1; text-align: center; padding: 5rem 1rem; color: #64748b; background: var(--bg-surface); border: 1px dashed var(--border-default); border-radius: 12px;">
+        <div style="font-size: 2.5rem; margin-bottom: 0.75rem;">📭</div>
+        <div style="font-size: 1.125rem; font-weight: 600; color: #cbd5e1; margin-bottom: 0.25rem;">No Inspection Records</div>
+        <div style="font-size: 0.8125rem;">Upload a vehicle image to trigger automatic ALPR & computer vision verification.</div>
       </div>
     `;
     return;
   }
 
-  grid.innerHTML = state.images.map((img) => renderImageCard(img)).join('');
+  grid.innerHTML = state.images.map((img) => renderVehicleCard(img)).join('');
 }
 
-function renderImageCard(img) {
+function renderVehicleCard(img) {
   const analysis = img.analysisResult;
-  const hasResults = img.status === 'completed' && analysis;
-  const overallStatus = hasResults ? analysis.overallStatus : null;
-  const issues = hasResults ? (analysis.issuesFound || []) : [];
-  const score = hasResults ? analysis.confidenceScore : null;
-  const checks = hasResults ? (analysis.checks || []) : [];
+  const isDone = img.status === 'completed' && analysis;
+  const overall = isDone ? analysis.overallStatus : null;
+  const score = isDone ? analysis.confidenceScore : null;
+  const checks = isDone ? (analysis.checks || []) : [];
 
-  // Build issue chips showing only failed checks
+  // Extract Plate Data if available
+  const plateData = extractPlateData(img);
+  const plateBadgeHtml = plateData
+    ? `<div class="plate-spotlight-badge" title="Extracted Vehicle Plate">${plateData.plate}</div>`
+    : '';
+
+  // Failed check tags
   const failedChecks = checks.filter((c) => !c.passed);
-  const issueChips = failedChecks
+  const checkTagsHtml = failedChecks
     .slice(0, 3)
-    .map(
-      (c) =>
-        `<span class="issue-chip ${c.severity || 'low'}">${formatCheckName(c.check)}</span>`
-    )
+    .map((c) => `<span class="check-tag ${c.severity || 'low'}">${c.check.replace('_', ' ').toUpperCase()}</span>`)
     .join('');
-  const moreCount = failedChecks.length > 3 ? `<span class="issue-chip low">+${failedChecks.length - 3} more</span>` : '';
 
-  // Score bar
-  let scoreBar = '';
+  // Confidence meter fill
+  let meterHtml = '';
   if (score !== null) {
     const pct = Math.round(score * 100);
-    scoreBar = `
-      <div class="card-score">
-        <span class="score-label" style="color: ${getScoreColor(score)}">${pct}%</span>
-        <div class="score-bar-bg">
-          <div class="score-bar-fill" style="width: ${pct}%; background: ${getScoreColor(score)}"></div>
+    const color = pct >= 80 ? 'var(--status-pass)' : pct >= 50 ? 'var(--status-warn)' : 'var(--status-fail)';
+    meterHtml = `
+      <div class="score-meter">
+        <span class="meter-score-text" style="color: ${color}">${pct}% ACCURACY</span>
+        <div class="meter-track-mini">
+          <div class="meter-fill-mini" style="width: ${pct}%; background: ${color}"></div>
         </div>
       </div>
     `;
   }
 
-  // Overall badge
-  const overallBadge = overallStatus
-    ? `<span class="card-overall-badge ${overallStatus}">${overallStatus === 'clean' ? '✓ Clean' : '⚠ Flagged'}</span>`
-    : '';
-
   return `
-    <div class="image-card" data-id="${img.id}" onclick="window.__openModal('${img.id}')">
-      <div class="card-image-wrapper">
+    <div class="vehicle-card" onclick="window.__openForensicModal('${img.id}')">
+      <div class="card-viewport">
         <img src="http://localhost:3000/uploads/${img.storedFilename}" alt="${img.originalName}"
-             onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;height:100%;font-size:2.5rem;opacity:0.3\\'>🖼️</div>'" />
-        <span class="card-status-badge ${img.status}">${img.status}</span>
-        ${overallBadge}
+             onerror="this.style.display='none';" />
+        <span class="card-status-pill ${img.status}">${img.status}</span>
+        ${plateBadgeHtml}
       </div>
-      <div class="card-body">
-        <div class="card-filename" title="${img.originalName}">${img.originalName}</div>
-        <div class="card-meta">
+      <div class="card-details-body">
+        <div class="card-filename-row">
+          <span class="card-filename" title="${img.originalName}">${img.originalName}</span>
+          <span class="card-timestamp">${timeAgo(img.uploadedAt)}</span>
+        </div>
+        <div class="card-meta-bar">
           <span>${formatBytes(img.sizeBytes)}</span>
           <span>•</span>
-          <span>${timeAgo(img.uploadedAt)}</span>
-          ${img.attempts > 0 ? `<span>• ${img.attempts} attempt${img.attempts > 1 ? 's' : ''}</span>` : ''}
+          <span>${img.mimeType ? img.mimeType.split('/')[1].toUpperCase() : 'IMG'}</span>
         </div>
-        ${issueChips || moreCount ? `<div class="card-issues">${issueChips}${moreCount}</div>` : ''}
-        ${scoreBar}
+        ${checkTagsHtml ? `<div class="check-tags-list">${checkTagsHtml}</div>` : ''}
+        ${meterHtml}
       </div>
     </div>
   `;
 }
 
 /* ----------------------------------------------------------
-   Render: Stats
+   Render: Telemetry Stats
    ---------------------------------------------------------- */
-function renderStats() {
-  // Count statuses from all loaded images — but also show total from API
+function updateTelemetryStats() {
   const completed = state.images.filter((i) => i.status === 'completed').length;
   const flagged = state.images.filter(
     (i) => i.status === 'completed' && i.analysisResult?.overallStatus === 'flagged'
@@ -317,238 +330,157 @@ function renderStats() {
     (i) => i.status === 'pending' || i.status === 'processing'
   ).length;
 
-  document.getElementById('stat-total').textContent = state.total;
-  document.getElementById('stat-completed').textContent = completed;
-  document.getElementById('stat-flagged').textContent = flagged;
-  document.getElementById('stat-pending').textContent = inQueue;
+  document.getElementById('m-total').textContent = state.total;
+  document.getElementById('m-completed').textContent = completed;
+  document.getElementById('m-flagged').textContent = flagged;
+  document.getElementById('m-queue').textContent = inQueue;
 }
 
 /* ----------------------------------------------------------
-   Render: Pagination
+   Render: Split-Pane Forensic Modal
    ---------------------------------------------------------- */
-function renderPagination() {
-  const pag = document.getElementById('pagination');
-  const totalPages = Math.ceil(state.total / state.limit) || 1;
-  const currentPage = Math.floor(state.offset / state.limit) + 1;
-
-  if (totalPages <= 1) {
-    pag.innerHTML = '';
-    return;
-  }
-
-  pag.innerHTML = `
-    <button class="page-btn" id="prev-page" ${currentPage <= 1 ? 'disabled' : ''}>← Previous</button>
-    <span class="page-info">Page ${currentPage} of ${totalPages}</span>
-    <button class="page-btn" id="next-page" ${currentPage >= totalPages ? 'disabled' : ''}>Next →</button>
-  `;
-
-  document.getElementById('prev-page')?.addEventListener('click', () => {
-    state.offset = Math.max(0, state.offset - state.limit);
-    loadImages();
-  });
-  document.getElementById('next-page')?.addEventListener('click', () => {
-    state.offset += state.limit;
-    loadImages();
-  });
-}
-
-/* ----------------------------------------------------------
-   Render: Detail Modal
-   ---------------------------------------------------------- */
-async function openModal(imageId) {
+async function openForensicModal(imageId) {
   const overlay = document.getElementById('modal-overlay');
-  const body = document.getElementById('modal-body');
-  const title = document.getElementById('modal-title');
+  const splitBody = document.getElementById('modal-split-body');
+  const title = document.getElementById('modal-filename');
 
   overlay.classList.add('active');
   document.body.style.overflow = 'hidden';
 
-  // Find image in local state first
-  let img = state.images.find((i) => i.id === imageId);
+  const img = state.images.find((i) => i.id === imageId);
 
-  title.textContent = img ? img.originalName : 'Loading...';
+  title.textContent = img ? `INSPECTION FILE: ${img.originalName}` : 'INSPECTING IMAGE...';
 
-  // If still processing, show spinner and poll
-  if (img && (img.status === 'pending' || img.status === 'processing')) {
-    body.innerHTML = renderModalPending(img);
-    pollForCompletion(imageId);
+  if (!img) return;
+
+  // Pending / Processing view
+  if (img.status === 'pending' || img.status === 'processing') {
+    splitBody.innerHTML = `
+      <div class="pane-viewport">
+        <img class="inspection-canvas" src="http://localhost:3000/uploads/${img.storedFilename}" />
+        <div class="file-info-table">
+          <div><div class="info-cell-label">FILE SIZE</div><div class="info-cell-val">${formatBytes(img.sizeBytes)}</div></div>
+          <div><div class="info-cell-label">MIME TYPE</div><div class="info-cell-val">${img.mimeType}</div></div>
+        </div>
+      </div>
+      <div class="pane-diagnostics" style="justify-content:center; align-items:center; text-align:center;">
+        <div style="font-size: 2rem; animation: spin 1s linear infinite;">↻</div>
+        <div style="font-weight: 600; color: #f1f5f9; margin-top: 1rem;">COMPUTER VISION ANALYSIS IN PROGRESS</div>
+        <div style="font-size: 0.8125rem; color: #64748b; margin-top: 0.25rem;">Running Laplacian blur, ELA diffs, and WASM Tesseract OCR...</div>
+      </div>
+    `;
+    pollImageStatus(imageId);
     return;
   }
 
-  // If failed
-  if (img && img.status === 'failed') {
+  // Failed view
+  if (img.status === 'failed') {
     let failure = null;
     try { failure = await getImageFailure(imageId); } catch { /* ignore */ }
-    body.innerHTML = renderModalFailed(img, failure);
+    splitBody.innerHTML = `
+      <div class="pane-viewport">
+        <img class="inspection-canvas" src="http://localhost:3000/uploads/${img.storedFilename}" />
+      </div>
+      <div class="pane-diagnostics">
+        <div style="background: var(--status-fail-bg); border: 1px solid var(--status-fail-border); padding: 1.25rem; border-radius: 10px; color: var(--status-fail);">
+          <div style="font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem;">Processing Failure</div>
+          <div style="font-family: var(--font-mono); font-size: 0.8125rem;">${failure?.failureReason || img.failureReason || 'Worker exception'}</div>
+        </div>
+      </div>
+    `;
     return;
   }
 
-  // Completed — get results
-  if (img && img.status === 'completed') {
-    try {
-      const results = await getImageResults(imageId);
-      body.innerHTML = renderModalCompleted(img, results);
-      bindDetailToggles();
-    } catch (e) {
-      body.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Error loading results</div><div class="empty-subtitle">${e.message}</div></div>`;
-    }
-    return;
-  }
-
-  // Fallback — fetch status
+  // Completed View — Fetch full results
   try {
-    const statusData = await getImageStatus(imageId);
-    body.innerHTML = `<pre style="color: var(--color-text-secondary); font-size: 0.85rem;">${JSON.stringify(statusData, null, 2)}</pre>`;
+    const results = await getImageResults(imageId);
+    const analysis = results.analysis || img.analysisResult;
+    const checks = analysis?.checks || [];
+    const overall = analysis?.overallStatus || 'clean';
+    const plateData = extractPlateData(img);
+
+    // Render ALPR Card if plate found
+    let alprCardHtml = '';
+    if (plateData) {
+      alprCardHtml = `
+        <div class="alpr-spotlight-card">
+          <div>
+            <div style="font-size: 0.6875rem; color: #ca8a04; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">
+              ⚡ EXTRACTED LICENSE PLATE (ALPR)
+            </div>
+            <div class="alpr-plate-display">${plateData.plate}</div>
+          </div>
+          <div class="alpr-details-grid">
+            <div class="alpr-chip"><span class="alpr-chip-key">STATE</span><span class="alpr-chip-val">${plateData.state}</span></div>
+            <div class="alpr-chip"><span class="alpr-chip-key">RTO</span><span class="alpr-chip-val">${plateData.rto}</span></div>
+            <div class="alpr-chip"><span class="alpr-chip-key">NUM</span><span class="alpr-chip-val">${plateData.number}</span></div>
+          </div>
+        </div>
+      `;
+    }
+
+    const checksHtml = checks.map((c) => `
+      <div class="check-row-card">
+        <div class="check-row-header">
+          <div class="check-title-group">
+            <div class="check-status-icon ${c.passed ? 'pass' : 'fail'}">${c.passed ? '✓' : '✕'}</div>
+            <span class="check-name-text">${formatCheckName(c.check)}</span>
+          </div>
+          ${c.severity && c.severity !== 'none' ? `<span class="check-tag ${c.severity}">${c.severity.toUpperCase()}</span>` : ''}
+        </div>
+        <div class="check-msg">${c.message || ''}</div>
+        ${c.details ? `
+          <button class="json-detail-toggle" onclick="this.nextElementSibling.classList.toggle('open')">{ } View Raw Diagnostic Payload</button>
+          <div class="json-detail-box">${JSON.stringify(c.details, null, 2)}</div>
+        ` : ''}
+      </div>
+    `).join('');
+
+    splitBody.innerHTML = `
+      <div class="pane-viewport">
+        <img class="inspection-canvas" src="http://localhost:3000/uploads/${img.storedFilename}" />
+        <div class="file-info-table">
+          <div><div class="info-cell-label">FILE SIZE</div><div class="info-cell-val">${formatBytes(img.sizeBytes)}</div></div>
+          <div><div class="info-cell-label">MIME TYPE</div><div class="info-cell-val">${img.mimeType}</div></div>
+          <div><div class="info-cell-label">ACCURACY SCORE</div><div class="info-cell-val">${Math.round((analysis.confidenceScore || 0) * 100)}%</div></div>
+          <div><div class="info-cell-label">ATTEMPTS</div><div class="info-cell-val">${img.attempts || 1}</div></div>
+        </div>
+      </div>
+      <div class="pane-diagnostics">
+        ${alprCardHtml}
+
+        <div class="status-banner ${overall}">
+          <div>
+            <div class="status-banner-title">${overall === 'clean' ? 'Vehicle Inspection Verified Clean' : 'Quality / Forensic Issues Flagged'}</div>
+            <div class="status-banner-sub">${overall === 'clean' ? 'All 8 computer vision heuristics passed bounds.' : `${(analysis.issuesFound || []).length} check(s) flagged review.`}</div>
+          </div>
+        </div>
+
+        <div style="font-weight: 700; font-size: 0.875rem; color: #f1f5f9; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.5rem;">
+          Detailed Diagnostics Breakdown (${checks.length})
+        </div>
+        ${checksHtml}
+      </div>
+    `;
+
   } catch (e) {
-    body.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load image</div></div>`;
+    splitBody.innerHTML = `<div style="padding: 2rem; color: var(--status-fail);">Failed to load forensic data: ${e.message}</div>`;
   }
 }
 
-// Expose to inline onclick
-window.__openModal = openModal;
+window.__openForensicModal = openForensicModal;
 
 function closeModal() {
   document.getElementById('modal-overlay').classList.remove('active');
   document.body.style.overflow = '';
 }
 
-function renderModalPending(img) {
-  return `
-    <img class="modal-image-preview" src="http://localhost:3000/uploads/${img.storedFilename}" alt="${img.originalName}"
-         onerror="this.style.display='none'" />
-    <div class="modal-info-grid">
-      ${infoItem('Status', img.status)}
-      ${infoItem('Size', formatBytes(img.sizeBytes))}
-      ${infoItem('Type', img.mimeType)}
-      ${infoItem('Uploaded', timeAgo(img.uploadedAt))}
-    </div>
-    <div class="processing-indicator">
-      <div class="processing-spinner"></div>
-      <div class="processing-text">Analysis in progress… This page will update automatically.</div>
-    </div>
-  `;
-}
-
-function renderModalFailed(img, failure) {
-  return `
-    <img class="modal-image-preview" src="http://localhost:3000/uploads/${img.storedFilename}" alt="${img.originalName}"
-         onerror="this.style.display='none'" />
-    <div class="modal-info-grid">
-      ${infoItem('Status', 'Failed')}
-      ${infoItem('Attempts', img.attempts || '—')}
-      ${infoItem('Size', formatBytes(img.sizeBytes))}
-      ${infoItem('Type', img.mimeType)}
-    </div>
-    <div class="failure-display">
-      <h3>⚠ Processing Failed</h3>
-      <p>${failure?.failureReason || img.failureReason || 'Unknown error'}</p>
-    </div>
-  `;
-}
-
-function renderModalCompleted(img, results) {
-  const analysis = results.analysis || img.analysisResult;
-  if (!analysis) return '<div class="empty-state"><div class="empty-icon">🤷</div><div class="empty-title">No analysis data</div></div>';
-
-  const checks = analysis.checks || [];
-  const overall = analysis.overallStatus;
-  const score = analysis.confidenceScore;
-  const issues = analysis.issuesFound || [];
-
-  return `
-    <img class="modal-image-preview" src="http://localhost:3000/uploads/${img.storedFilename}" alt="${img.originalName}"
-         onerror="this.style.display='none'" />
-
-    <div class="modal-info-grid">
-      ${infoItem('File', img.originalName)}
-      ${infoItem('Size', formatBytes(img.sizeBytes))}
-      ${infoItem('Type', img.mimeType)}
-      ${infoItem('Uploaded', new Date(img.uploadedAt).toLocaleString())}
-      ${infoItem('Processed', results.processedAt ? new Date(results.processedAt).toLocaleString() : '—')}
-      ${infoItem('Confidence', score !== undefined ? Math.round(score * 100) + '%' : '—')}
-    </div>
-
-    <!-- Overall Summary -->
-    <div class="overall-summary ${overall}">
-      <div class="overall-icon">${overall === 'clean' ? '✅' : '⚠️'}</div>
-      <div class="overall-details">
-        <h3>${overall === 'clean' ? 'Image Passed All Checks' : `${issues.length} Issue${issues.length !== 1 ? 's' : ''} Detected`}</h3>
-        <p>${overall === 'clean'
-          ? 'No quality or authenticity concerns were found.'
-          : `Flagged checks: ${issues.map(formatCheckName).join(', ')}`
-        }</p>
-      </div>
-    </div>
-
-    <!-- Individual Checks -->
-    <h3 class="checks-title">Analysis Checks (${checks.length})</h3>
-    ${checks.map((c) => renderCheckItem(c)).join('')}
-  `;
-}
-
-function renderCheckItem(check) {
-  const iconClass = check.passed ? 'passed' : (check.severity === 'medium' ? 'warning' : 'failed');
-  const statusSymbol = check.passed ? '✓' : '✕';
-  const details = check.details || {};
-  const detailRows = Object.entries(details)
-    .map(([k, v]) => `
-      <div class="detail-row">
-        <span class="detail-key">${k}</span>
-        <span class="detail-value">${typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
-      </div>
-    `)
-    .join('');
-
-  return `
-    <div class="check-item">
-      <div class="check-header">
-        <div class="check-icon ${iconClass}">${getCheckIcon(check)}</div>
-        <span class="check-name">${formatCheckName(check.check)}</span>
-        <span class="check-icon ${iconClass}" style="width:auto;height:auto;background:none;font-size:0.85rem">${statusSymbol}</span>
-        ${check.severity ? `<span class="check-severity ${check.severity}">${check.severity}</span>` : ''}
-      </div>
-      <div class="check-message">${check.message || '—'}</div>
-      ${detailRows ? `
-        <button class="check-details-toggle" data-target="${check.check}">Show Details ▾</button>
-        <div class="check-details">
-          <div class="check-details-content" id="details-${check.check}">
-            ${detailRows}
-          </div>
-        </div>
-      ` : ''}
-    </div>
-  `;
-}
-
-function infoItem(label, value) {
-  return `
-    <div class="info-item">
-      <div class="info-label">${label}</div>
-      <div class="info-value">${value}</div>
-    </div>
-  `;
-}
-
-function bindDetailToggles() {
-  document.querySelectorAll('.check-details-toggle').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const target = btn.getAttribute('data-target');
-      const content = document.getElementById(`details-${target}`);
-      if (content) {
-        content.classList.toggle('expanded');
-        btn.textContent = content.classList.contains('expanded') ? 'Hide Details ▴' : 'Show Details ▾';
-      }
-    });
-  });
-}
-
 /* ----------------------------------------------------------
-   Data Loading
+   Data Ingestion & Loading
    ---------------------------------------------------------- */
-async function loadImages() {
+async function loadInspectionData() {
   state.isLoading = true;
-  renderImageGrid();
+  renderInspectionGrid();
 
   try {
     const data = await listImages({
@@ -559,179 +491,152 @@ async function loadImages() {
     state.images = data.items;
     state.total = data.total;
 
-    // Auto-poll for pending/processing images
+    // Auto poll pending
     state.images.forEach((img) => {
       if ((img.status === 'pending' || img.status === 'processing') && !state.pollingIds.has(img.id)) {
-        pollForCompletion(img.id);
+        pollImageStatus(img.id);
       }
     });
   } catch (e) {
-    showToast('Failed to load images: ' + e.message, 'error');
+    showToast('Failed to sync inspection records: ' + e.message, 'error');
   } finally {
     state.isLoading = false;
-    renderImageGrid();
-    renderStats();
-    renderPagination();
+    renderInspectionGrid();
+    updateTelemetryStats();
   }
 }
 
-/* ----------------------------------------------------------
-   Polling — watches pending/processing images
-   ---------------------------------------------------------- */
-function pollForCompletion(imageId) {
+function pollImageStatus(imageId) {
   if (state.pollingIds.has(imageId)) return;
   state.pollingIds.add(imageId);
 
   const interval = setInterval(async () => {
     try {
       const statusData = await getImageStatus(imageId);
-
       if (statusData.status === 'completed' || statusData.status === 'failed') {
         clearInterval(interval);
         state.pollingIds.delete(imageId);
 
-        // Refresh the list to get updated data
-        await loadImages();
+        await loadInspectionData();
+        showToast(`Image ${statusData.status === 'completed' ? 'analysis finished' : 'processing failed'}.`, statusData.status === 'completed' ? 'success' : 'error');
 
-        if (statusData.status === 'completed') {
-          showToast('Image analysis complete!', 'success');
-        } else {
-          showToast('Image processing failed.', 'error');
-        }
-
-        // If modal is open for this image, refresh it
         const overlay = document.getElementById('modal-overlay');
         if (overlay.classList.contains('active')) {
-          openModal(imageId);
+          openForensicModal(imageId);
         }
       }
-    } catch {
-      // Silently retry
-    }
+    } catch { /* retry */ }
   }, 2000);
 }
 
 /* ----------------------------------------------------------
-   Health Check
+   Health Checks
    ---------------------------------------------------------- */
-async function checkHealth() {
+async function checkSystemHealth() {
   state.isOnline = await healthCheck();
   const dot = document.getElementById('status-dot');
   const text = document.getElementById('status-text');
   if (state.isOnline) {
     dot.classList.remove('offline');
-    text.textContent = 'API Connected';
+    text.textContent = 'SYSTEM ONLINE';
   } else {
     dot.classList.add('offline');
-    text.textContent = 'API Offline';
+    text.textContent = 'API OFFLINE';
   }
 }
 
-// Re-check health every 30s
-setInterval(checkHealth, 30000);
+setInterval(checkSystemHealth, 30000);
 
 /* ----------------------------------------------------------
-   Upload Handling
+   Upload Actions
    ---------------------------------------------------------- */
-async function handleUpload(file) {
+async function processUploadFile(file) {
   if (!file) return;
 
-  const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
-  if (!validTypes.includes(file.type)) {
-    showToast('Unsupported file type. Use JPEG, PNG, or WebP.', 'error');
-    return;
-  }
+  const bar = document.getElementById('upload-velocity-bar');
+  const fill = document.getElementById('meter-fill');
+  const text = document.getElementById('meter-status-text');
+  const pct = document.getElementById('meter-pct');
 
-  const maxSize = 15 * 1024 * 1024;
-  if (file.size > maxSize) {
-    showToast('File too large. Maximum 15 MB.', 'error');
-    return;
-  }
-
-  const progress = document.getElementById('upload-progress');
-  const bar = document.getElementById('progress-bar');
-  const text = document.getElementById('progress-text');
-
-  progress.classList.add('active');
-  bar.style.width = '20%';
-  text.textContent = `Uploading ${file.name}...`;
+  bar.classList.add('active');
+  fill.style.width = '25%';
+  text.textContent = `INGESTING ${file.name.toUpperCase()}...`;
+  pct.textContent = '25%';
 
   try {
-    bar.style.width = '60%';
-    const result = await uploadImage(file);
-    bar.style.width = '100%';
-    text.textContent = 'Upload complete! Queued for analysis.';
+    fill.style.width = '70%';
+    pct.textContent = '70%';
+    const res = await uploadImage(file);
 
-    showToast(`"${file.name}" uploaded and queued for analysis.`, 'success');
+    fill.style.width = '100%';
+    pct.textContent = '100%';
+    text.textContent = 'UPLOAD SUCCESSFUL — ENQUEUED FOR ALPR';
 
-    // Reset filter and reload
+    showToast(`Media queued for ALPR & forensic checks: ${file.name}`, 'success');
+
     state.filter = null;
-    state.offset = 0;
     updateFilterButtons();
-    await loadImages();
-
-    // Start polling for this new image
-    pollForCompletion(result.id);
+    await loadInspectionData();
+    pollImageStatus(res.id);
 
     setTimeout(() => {
-      progress.classList.remove('active');
-      bar.style.width = '0%';
+      bar.classList.remove('active');
+      fill.style.width = '0%';
     }, 2000);
   } catch (e) {
-    bar.style.width = '0%';
-    text.textContent = 'Upload failed.';
-    showToast('Upload failed: ' + e.message, 'error');
-    setTimeout(() => progress.classList.remove('active'), 2000);
+    fill.style.width = '0%';
+    text.textContent = 'INGESTION FAILED';
+    showToast('Upload error: ' + e.message, 'error');
+    setTimeout(() => bar.classList.remove('active'), 2500);
   }
 }
 
 /* ----------------------------------------------------------
-   Event Binding
+   Events Setup
    ---------------------------------------------------------- */
 function bindEvents() {
-  // Upload zone click + drag
-  const zone = document.getElementById('upload-zone');
+  const studio = document.getElementById('upload-studio');
   const input = document.getElementById('upload-input');
 
-  zone.addEventListener('click', () => input.click());
+  studio.addEventListener('click', () => input.click());
 
   input.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) handleUpload(e.target.files[0]);
-    e.target.value = ''; // reset
+    if (e.target.files.length > 0) processUploadFile(e.target.files[0]);
+    e.target.value = '';
   });
 
-  zone.addEventListener('dragover', (e) => {
+  studio.addEventListener('dragover', (e) => {
     e.preventDefault();
-    zone.classList.add('drag-over');
-  });
-  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-  zone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    zone.classList.remove('drag-over');
-    if (e.dataTransfer.files.length > 0) handleUpload(e.dataTransfer.files[0]);
+    studio.classList.add('drag-over');
   });
 
-  // Filters
-  document.getElementById('filter-group').addEventListener('click', (e) => {
-    if (e.target.classList.contains('filter-btn')) {
-      const filter = e.target.getAttribute('data-filter') || null;
-      state.filter = filter;
+  studio.addEventListener('dragleave', () => studio.classList.remove('drag-over'));
+  studio.addEventListener('drop', (e) => {
+    e.preventDefault();
+    studio.classList.remove('drag-over');
+    if (e.dataTransfer.files.length > 0) processUploadFile(e.dataTransfer.files[0]);
+  });
+
+  // Filter toolbar
+  document.getElementById('filter-segments').addEventListener('click', (e) => {
+    if (e.target.classList.contains('segment-btn')) {
+      state.filter = e.target.getAttribute('data-filter') || null;
       state.offset = 0;
       updateFilterButtons();
-      loadImages();
+      loadInspectionData();
     }
   });
 
-  // Refresh
-  document.getElementById('refresh-btn').addEventListener('click', async () => {
-    const btn = document.getElementById('refresh-btn');
+  // Re-sync trigger
+  document.getElementById('refresh-trigger').addEventListener('click', async () => {
+    const btn = document.getElementById('refresh-trigger');
     btn.classList.add('spinning');
-    await loadImages();
-    await checkHealth();
+    await loadInspectionData();
+    await checkSystemHealth();
     setTimeout(() => btn.classList.remove('spinning'), 600);
   });
 
-  // Modal close
+  // Modal actions
   document.getElementById('modal-close').addEventListener('click', closeModal);
   document.getElementById('modal-overlay').addEventListener('click', (e) => {
     if (e.target === document.getElementById('modal-overlay')) closeModal();
@@ -742,7 +647,7 @@ function bindEvents() {
 }
 
 function updateFilterButtons() {
-  document.querySelectorAll('.filter-btn').forEach((btn) => {
+  document.querySelectorAll('.segment-btn').forEach((btn) => {
     const f = btn.getAttribute('data-filter') || null;
     btn.classList.toggle('active', f === state.filter);
   });

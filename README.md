@@ -1,124 +1,262 @@
-# Intelligent Media Processing Pipeline
+# Intelligent Media Processing Pipeline & Quality Inspection System
 
-An async backend for uploading vehicle field images, queuing them for analysis,
-and detecting common quality/authenticity issues (blur, low light, duplicates,
-screenshots, tampering signals, invalid plate format).
+An end-to-end, asynchronous media processing system and interactive visual dashboard for vehicle image verification and automatic license plate recognition (ALPR). Built with Express, TypeScript, BullMQ, Redis, PostgreSQL, Prisma, Sharp, Tesseract.js, and a Vite Frontend.
 
-## Tech Stack
+Designed to handle high-concurrency vehicle image uploads, queuing them for distributed computer vision analysis to automatically extract and validate vehicle registration plates, detect quality issues (blur, lighting anomalies), identify duplicate submissions, inspect photo tampering, and verify metadata integrity in real time.
 
-| Concern            | Choice                          | Why |
-|---------------------|----------------------------------|-----|
-| API                 | Express + TypeScript             | Minimal ceremony, easy to reason about for a 48h scope |
-| Queue               | BullMQ + Redis                   | Battle-tested, gives retries/backoff/concurrency for free, easy local setup |
-| Database            | PostgreSQL + Prisma              | Relational fits the "one row per image + status lifecycle" shape; Prisma gives type-safe queries + migrations |
-| Image processing    | `sharp`                          | Fast (libvips-backed), no native OpenCV build step needed |
-| OCR                 | `tesseract.js`                   | Pure JS/WASM, no system dependency to install |
-| Storage             | Local disk (`./uploads`)         | Simplest thing that works for the assignment scope; swappable, see Trade-offs |
+---
 
-## Architecture
+## Project Outcomes & System Screenshots
 
-### Service flow
+Place your system screenshots in this section to demonstrate the working dashboard, upload workflow, and detailed analysis results.
+
+### Dashboard Overview & Upload Interface
+![alt text](image.png)
+*Figure 1: Main Dashboard showing real-time system stats, active filter controls, drag-and-drop upload zone, and recent submission cards.*
+
+---
+
+### Detailed Quality Check Inspection Modal
+![alt text](image-3.png)
+*Figure 2: Comprehensive inspection view rendering individual check results, confidence scores, issue flags, license plate extractions, and expandable diagnostic metadata.*
+
+---
+
+### Terminal Execution & Worker Logs
+![alt text](image-2.png)
+*Figure 3: Multi-process terminal output illustrating concurrent BullMQ job processing, database persistence, and Express API responses.*
+
+---
+
+## Flagship Capability: Automatic Vehicle License Plate Recognition (ALPR)
+
+Vehicle registration plate detection and validation is a core automated feature of this pipeline:
+
+- **Automated Text Extraction**: Powered by an embedded `tesseract.js` WASM engine running asynchronously in background workers without blocking the main API thread.
+- **Robust Text Normalization**: Noise filtering and uppercase normalization to handle variable photo lighting, character spacing, and OCR font ambiguities.
+- **Standardized Format Validation**: Regex pattern matching against official Indian vehicle registration structures (`SS DD L(L) DDDD`, e.g., `KA05MH1234`):
+  - **State Code (`SS`)**: 2-letter state identifier (e.g., `KA`, `MH`, `DL`).
+  - **RTO Code (`DD`)**: 2-digit Regional Transport Office code.
+  - **Series Code (`L(L)`)**: 1 or 2 letter registration series.
+  - **Unique Registration Number (`DDDD`)**: 4-digit vehicle identifier.
+- **Structured Output**: Extracted plate data is parsed into distinct component fields (`stateCode`, `rtoCode`, `seriesCode`, `uniqueNumber`) and returned in structured JSON for downstream verification workflows.
+
+---
+
+## Key Features & System Capabilities
+
+- **Fast Non-Blocking Submissions**: API accepts multipart uploads instantly (`202 Accepted`), computes fast hashes, and delegates heavy CV analysis to background workers via BullMQ queues.
+- **8 Automated Computer Vision & Forensic Checks**:
+  1. **OCR Plate Extraction & Validation (Core Feature)**: Full-frame OCR text extraction using `tesseract.js` paired with Indian vehicle registration plate regex parsing (`SS DD L(L) DDDD`).
+  2. **Blur Detection**: Laplacian variance computation over pixel intensity gradients.
+  3. **Brightness Analysis**: Mean grayscale luminance evaluation (under/over-exposure).
+  4. **Dimension Validation**: Resolution checks against configurable operational standards.
+  5. **Duplicate Detection**: Dual-layer detection using exact SHA-256 hashing and near-duplicate Average Hashing (`aHash`) with Hamming distance comparison.
+  6. **Screenshot & Re-photo Detection**: Identifies screen captures via known resolution profiles, missing EXIF metadata, and `Software` EXIF tags.
+  7. **Metadata Integrity Analysis**: Detects stripped EXIF headers on JPEG uploads.
+  8. **Tampering & Editing Heuristic**: Error Level Analysis (ELA) measuring peak-to-mean re-compression variance to spot localized photo modifications.
+- **Interactive Single-Page Visual Dashboard**:
+  - Drag-and-drop file upload zone supporting JPEG, PNG, and WebP formats.
+  - Live processing stats, real-time status polling (`pending`, `processing`, `completed`, `failed`).
+  - Overall status indicators (`Clean` vs `Flagged`) and transparent weighted confidence scores.
+  - Detailed Modal inspect view detailing individual pass/fail checks, extracted license plate details, severity levels (`high`, `medium`, `low`), and inspectable raw check metadata.
+- **Resilience & Fault Tolerance**: Isolated check execution (one failing heuristic never aborts the rest of the pipeline), BullMQ job retries with exponential backoff, and strict request validation.
+
+---
+
+## System Architecture
 
 ```
-Client
-  │  POST /images (multipart, field "image")
-  ▼
-Express API ──► multer saves file to disk ──► sha256 + perceptual hash computed
-  │                                                        │
-  │                                              Image row created (status=pending)
-  │                                                        │
-  │                                              Job enqueued (BullMQ, jobId = image id)
-  ▼
-202 Accepted { id, status: "pending" }   ◄── returned immediately, no waiting on analysis
+                       ┌────────────────────────────────────────┐
+                       │           Client / Frontend            │
+                       │   Vite + Vanilla JS Single-Page App    │
+                       └───────────────────┬────────────────────┘
+                                           │
+                                  POST /images (multipart)
+                                           │
+                                           ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                   Express API                                   │
+│                                                                                 │
+│  1. Saves file to disk (`./uploads`)                                             │
+│  2. Synchronously computes SHA-256 + aHash                                     │
+│  3. Creates `Image` row in Postgres (status: pending)                           │
+│  4. Enqueues job in BullMQ (jobId = image UUID)                                 │
+│  5. Returns 202 Accepted { id, status: "pending" } immediately                  │
+└──────────────────────────────────────────┬──────────────────────────────────────┘
+                                           │
+                                           ▼
+                               ┌───────────────────────┐
+                               │     Redis Queue       │
+                               │      (BullMQ)         │
+                               └───────────┬───────────┘
+                                           │
+                                           ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                            Worker Process (Async)                               │
+│                                                                                 │
+│  • Concurrency: 2 (configurable)                                                │
+│  • Status -> processing                                                         │
+│  • Runs all 8 Analysis Checks independently (including OCR Plate Detection)     │
+│  • Computes overallStatus (clean/flagged) & weighted confidenceScore           │
+│  • Writes analysisResult JSON blob to Postgres                                  │
+│  • Status -> completed (or failed after max retries)                            │
+└────────────────────────────────└────────────────────────────────────────────────┘
 ```
 
-```
-Worker process (separate from API process)
-  │
-  ▼
-Picks up job ──► status: processing ──► runs 8 analysis checks ──► status: completed/failed
-                                              │
-                                    analysisResult JSON written to the row
-```
+---
 
-The API process and the worker process are **two separate Node processes**
-(`npm run dev` vs `npm run dev:worker`, or two containers in docker-compose).
-This is the core async design decision: uploads must return fast even if
-OCR + hashing + duplicate lookups take a couple of seconds, so the HTTP
-request path never blocks on analysis.
+## Tech Stack & Technical Rationale
 
-### Processing flow (per image)
-
-1. `pending` → job sits in the Redis-backed BullMQ queue.
-2. Worker picks it up → status → `processing`, `processingStartedAt` set, `attempts` incremented.
-3. All 8 checks run (see below), each independently try/caught so one
-   check throwing doesn't lose the results of the other 7.
-4. Results assembled into a single `analysisResult` JSON blob with an
-   `overallStatus` (`clean`/`flagged`), `issuesFound` list, per-check
-   detail, and a simple explainable `confidenceScore`.
-5. Status → `completed` (or `failed` if something at the *infrastructure*
-   level broke — file missing, DB unreachable — after all retries exhausted).
-
-### Queue strategy
-
-- **BullMQ** with `attempts: 3` and exponential backoff (2s/4s/8s) for
-  transient failures (e.g. a momentary DB blip).
-- `jobId` is set to the image's own UUID, so re-enqueuing the same image
-  id is naturally idempotent (BullMQ won't create a duplicate job).
-- The DB row is only flipped to `failed` once BullMQ has exhausted all
-  retry attempts (`worker.on('failed', ...)` checks `attemptsMade >= maxAttempts`)
-  — so a job that fails once and succeeds on retry never shows as `failed`
-  to the API consumer, but `attempts` on the row still tells you it wasn't
-  clean the first time.
-- Worker `concurrency = 2` — OCR is the CPU-bound bottleneck; this is
-  tunable per deployment based on available cores.
-
-### The 8 analysis checks
-
-| Check | Technique | Signal |
+| Layer | Technology | Rationale |
 |---|---|---|
-| `blur_detection` | Laplacian variance (hand-rolled since we're on `sharp` not OpenCV) | Low variance = smoothed edges = blurry |
-| `brightness_analysis` | Mean grayscale pixel intensity | Too low = low light, too high = overexposed |
-| `dimension_validation` | Width/height vs configured minimum | Unusably small images |
-| `duplicate_detection` | sha256 (exact) + average-hash/aHash (near-duplicate) with Hamming distance | Catches identical re-uploads and lightly re-compressed/re-cropped repeats |
-| `screenshot_rephoto_heuristic` | EXIF presence + resolution match against known screen sizes + `Software` EXIF tag | Screenshots lack camera EXIF and match device screen resolutions |
-| `metadata_analysis` | EXIF presence/absence on JPEGs | Total absence of EXIF on a JPEG is a mild "stripped or non-original" signal |
-| `tampering_heuristic` | Simplified Error Level Analysis (re-compress at fixed quality, diff, look at spike ratio) | Localized edits recompress differently than the rest of the image |
-| `ocr_plate_validation` | Tesseract OCR over full frame + regex for Indian plate format (`SS DD L(L) DDDD`) | Extracts + validates plate text shape |
+| **API Backend** | Node.js, Express, TypeScript | High I/O performance, strong typing, low runtime overhead. |
+| **Async Queue** | BullMQ, Redis | Robust job scheduling, built-in concurrency control, retries with exponential backoff, and job idempotency. |
+| **Database** | PostgreSQL, Prisma ORM | Relational schema fits the image processing lifecycle; Prisma provides type-safe queries and automated schema migrations. |
+| **OCR Engine** | `tesseract.js` | Pure JavaScript/WASM Tesseract implementation ensuring zero external C++ binary system setup for license plate extraction. |
+| **Image Forensic Processing** | `sharp` | High-performance C++ `libvips` bindings for fast pixel manipulation, grayscale conversion, diffing, and convolutions without native OpenCV dependencies. |
+| **Frontend UI** | Vite, Vanilla JavaScript, CSS3 | Zero-framework footprint, ultra-fast UI rendering, glassmorphic dark design system with micro-animations. |
+| **Storage** | Local Disk (`./uploads`) | Decoupled storage adapter interface allowing easy future transition to S3/Cloud Storage. |
 
-Every check returns the same shape (`{ check, passed, severity, details, message }`)
-so the API and any future frontend can render results generically instead of
-special-casing each check type. `confidenceScore` is a **transparent, explainable**
-severity-weighted average — not a trained model — by design (see Trade-offs).
+---
 
-### Data model
+## Repository Structure
 
-Single `Image` table (see `prisma/schema.prisma`):
-- Upload metadata (name, path, mime, size)
-- Lifecycle (`status` enum, `attempts`, timestamps)
-- Both hashes (indexed, for duplicate lookups)
-- `analysisResult` as JSON
-
-**Why one JSON column instead of a normalized `checks` table:** the check
-set is expected to change frequently during this kind of project (add a new
-heuristic, tweak a threshold, change a message) and every check's `details`
-shape is different by nature. Normalizing per-check-type columns would mean
-a schema migration every time a check changes. JSON keeps checks
-independently versionable while `status`, `sha256Hash`, `perceptualHash`
-stay as real indexed columns because those are queried directly (duplicate
-lookups, status filtering) and benefit from being real columns.
-
-## API Reference
-
-### `POST /images`
-Multipart form-data, field name `image`. Accepts jpeg/png/webp, max 15MB (configurable).
-
-```bash
-curl -X POST http://localhost:3000/images \
-  -F "image=@/path/to/vehicle.jpg"
+```
+.
+├── docker-compose.yml        # Multi-container orchestration (Postgres, Redis, API, Worker)
+├── Dockerfile                # Production multi-stage Docker build
+├── package.json              # Backend dependencies & npm scripts
+├── prisma/
+│   └── schema.prisma         # Postgres database schema definition
+├── scripts/
+│   └── seed.ts               # Synthetic sample generator & seeding script
+├── src/
+│   ├── app.ts                # Express application setup & static file serving
+│   ├── server.ts             # API HTTP server entry point
+│   ├── config.ts             # Environment variable validation & defaults
+│   ├── db.ts                 # Prisma client instance
+│   ├── controllers/          # Request handlers (upload, status, results, list)
+│   ├── routes/               # API endpoint definitions
+│   ├── services/             # Database & queue interaction logic
+│   ├── queue/                # BullMQ queue setup & worker event handlers
+│   ├── utils/                # Hashing (SHA256, aHash), logger, and upload helpers
+│   └── analysis/             # Computer vision & forensic heuristics
+│       ├── blur.ts           # Laplacian variance calculation
+│       ├── brightness.ts     # Mean pixel intensity calculation
+│       ├── dimensions.ts     # Resolution bounds checking
+│       ├── duplicate.ts      # Exact & Hamming-distance near-duplicate search
+│       ├── screenshot.ts     # Resolution profile & EXIF check
+│       ├── metadata.ts       # EXIF headers presence validation
+│       ├── tampering.ts      # Error Level Analysis (ELA) peak/mean ratio
+│       └── ocrPlate.ts       # Full-frame OCR & Indian plate regex validation (ALPR)
+├── frontend/                 # Web Dashboard
+│   ├── index.html            # App HTML shell
+│   ├── vite.config.js        # Vite build configuration
+│   ├── package.json          # Frontend dependencies
+│   └── src/
+│       ├── api.js            # API client module for backend communication
+│       ├── style.css         # Custom CSS tokens & glassmorphic layout
+│       └── main.js           # Single-page application logic & UI updates
+└── tests/
+    └── analysis.test.ts      # Unit tests for core CV algorithms
 ```
 
-Response `202 Accepted`:
+---
+
+## Setup & Execution Guide
+
+### Prerequisites
+- Node.js (v18 or higher)
+- Docker & Docker Compose *(Optional, for containerized run)*
+- PostgreSQL & Redis *(If running manually without Docker)*
+
+---
+
+### Option A: Docker Compose (Recommended)
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/Raiakshar/Intelligent-Media-Processing-Pipeline.git
+   cd Intelligent-Media-Processing-Pipeline
+   ```
+
+2. Copy the environment configuration:
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Spin up all services (Postgres, Redis, Backend API, Worker):
+   ```bash
+   docker compose up --build
+   ```
+   - **Backend API**: `http://localhost:3000`
+   - Database migrations will automatically run prior to API startup.
+
+4. *(Optional)* Start the Frontend Web Dashboard:
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+   - Access UI at `http://localhost:5173` or `http://localhost:5174`.
+
+---
+
+### Option B: Local Manual Setup
+
+#### 1. Backend Setup
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Configure environment
+cp .env.example .env
+
+# 3. Apply database migrations
+npx prisma migrate dev --name init
+
+# 4. Terminal 1: Launch Backend API Server
+npm run dev
+
+# 5. Terminal 2: Launch Background Worker
+npm run dev:worker
+```
+
+#### 2. Frontend Dashboard Setup
+```bash
+# Terminal 3: Launch Visual Dashboard
+cd frontend
+npm install
+npm run dev
+```
+Open `http://localhost:5173` in your browser.
+
+---
+
+### Seeding Sample Data & Testing
+
+#### Seed Synthetic Images
+Run the seeding script to automatically upload sample test images (valid size vs undersized) to verify queueing and worker execution:
+```bash
+npm run seed
+```
+
+#### Run Unit Tests
+Run standalone unit tests for computer vision algorithms (blur, brightness, hashing, dimensions):
+```bash
+npm test
+```
+
+---
+
+## API Reference Documentation
+
+### 1. Upload Image
+`POST /images`
+- **Content-Type**: `multipart/form-data`
+- **Form Field**: `image` (File: `.jpg`, `.jpeg`, `.png`, `.webp` up to 15MB)
+- **Response** (`202 Accepted`):
 ```json
 {
   "id": "b3f1c2a0-1234-4abc-9def-abcdef123456",
@@ -128,217 +266,134 @@ Response `202 Accepted`:
 }
 ```
 
-### `GET /images/:id/status`
+### 2. Get Processing Status
+`GET /images/:id/status`
+- **Response** (`200 OK`):
 ```json
 {
-  "id": "b3f1c2a0-...",
-  "status": "processing",
+  "id": "b3f1c2a0-1234-4abc-9def-abcdef123456",
+  "status": "completed",
   "attempts": 1,
   "uploadedAt": "2026-07-20T10:00:00.000Z",
   "processingStartedAt": "2026-07-20T10:00:01.500Z",
-  "processedAt": null
+  "processedAt": "2026-07-20T10:00:04.200Z"
 }
 ```
 
-### `GET /images/:id/results`
-Returns `409` if not yet `completed`. On success:
+### 3. Get Analysis Results
+`GET /images/:id/results`
+- Returns `409 Conflict` if processing is not yet `completed`.
+- **Response** (`200 OK`):
 ```json
 {
-  "id": "b3f1c2a0-...",
+  "id": "b3f1c2a0-1234-4abc-9def-abcdef123456",
   "status": "completed",
   "processedAt": "2026-07-20T10:00:04.200Z",
   "analysis": {
-    "overallStatus": "flagged",
-    "issuesFound": ["blur_detection", "ocr_plate_validation"],
-    "confidenceScore": 0.71,
+    "overallStatus": "clean",
+    "issuesFound": [],
+    "confidenceScore": 1.0,
     "checks": [
       {
+        "check": "ocr_plate_validation",
+        "passed": true,
+        "severity": "none",
+        "details": {
+          "extractedPlate": "KA05MH1234",
+          "stateCode": "KA",
+          "rtoCode": "05",
+          "seriesCode": "MH",
+          "uniqueNumber": "1234",
+          "rawMatch": "KA 05 MH 1234"
+        },
+        "message": "Valid-format plate detected: KA05MH1234"
+      },
+      {
         "check": "blur_detection",
-        "passed": false,
-        "severity": "high",
-        "details": { "laplacianVariance": 42.3, "threshold": 100, "resizedTo": "800x600" },
-        "message": "Image appears blurry (Laplacian variance 42.3 < threshold 100)"
+        "passed": true,
+        "severity": "none",
+        "details": { "laplacianVariance": 240.5, "threshold": 100 },
+        "message": "Image sharpness is sufficient (Laplacian variance 240.5 >= threshold 100)"
       }
-      // ... 7 more checks
     ]
   }
 }
 ```
 
-### `GET /images/:id/failure`
-Returns `409` unless `status === "failed"`. On success:
+### 4. Get Failure Details
+`GET /images/:id/failure`
+- Returns `409 Conflict` unless `status === "failed"`.
+- **Response** (`200 OK`):
 ```json
-{ "id": "b3f1c2a0-...", "status": "failed", "attempts": 3, "failureReason": "Stored file missing on disk: ..." }
+{
+  "id": "b3f1c2a0-1234-4abc-9def-abcdef123456",
+  "status": "failed",
+  "attempts": 3,
+  "failureReason": "Stored file missing on disk: ./uploads/b3f1c2a0..."
+}
 ```
 
-### `GET /images?status=pending&limit=20&offset=0`
-Paginated listing, useful for a future dashboard.
-
-### `GET /health`
-Basic liveness probe.
-
-## Running Locally
-
-### Option A — Docker Compose (recommended, one command)
-```bash
-cp .env.example .env
-docker compose up --build
-```
-This starts Postgres, Redis, the API (port 3000), and the worker, and runs
-migrations automatically before the API starts.
-
-### Option B — Manual (Postgres + Redis already running locally)
-```bash
-npm install
-cp .env.example .env   # edit DATABASE_URL/REDIS_HOST if needed
-npx prisma migrate dev --name init
-npm run dev             # terminal 1: API on :3000
-npm run dev:worker      # terminal 2: worker process
+### 5. List Images (Paginated)
+`GET /images?status=completed&limit=20&offset=0`
+- **Response** (`200 OK`):
+```json
+{
+  "items": [ /* list of image summary records */ ],
+  "total": 42,
+  "limit": 20,
+  "offset": 0
+}
 ```
 
-### Seed sample data
-```bash
-npm run seed
+### 6. Health Check
+`GET /health`
+- **Response** (`200 OK`):
+```json
+{
+  "status": "ok",
+  "ts": "2026-07-20T10:02:24.816Z"
+}
 ```
-Generates two synthetic JPEGs (a normal-sized one, a too-small one),
-uploads them through the real service layer, and prints their IDs so you
-can immediately hit the status/results endpoints. Requires the worker to
-be running to actually process them.
 
-### Tests
-```bash
-npm test
-```
-Covers the checks that don't require Postgres/Redis (blur, brightness,
-dimension validation, hashing) using synthetically generated images —
-runnable in complete isolation, no infrastructure needed.
+---
+
+## Analysis Heuristics Specification
+
+| Check Name | Inspection Technique | Failure Threshold / Logic | Severity |
+|---|---|---|---|
+| `ocr_plate_validation` | Full-frame OCR text extraction using Tesseract.js WASM engine, normalized and evaluated against Indian vehicle plate regex (`SS DD L(L) DDDD`). | No matching plate string found | Medium |
+| `blur_detection` | Convolves a 3x3 Laplacian operator over grayscale pixels using Sharp. | Laplacian Variance < 100 | High |
+| `brightness_analysis` | Computes mean pixel intensity across the luminance channel. | Mean < 60 (Low Light) or Mean > 200 (Overexposed) | Medium |
+| `dimension_validation` | Reads image dimensions via metadata headers. | Width < 400px or Height < 300px | High |
+| `duplicate_detection` | SHA-256 for exact match; 64-bit Average Hash (`aHash`) with Hamming Distance. | Hamming Distance ≤ 5 against recent 500 images | High |
+| `screenshot_rephoto_heuristic` | Cross-references aspect ratio & resolution against common mobile screen sizes, checks `Software` EXIF tags and missing camera EXIF data. | Known screen resolution match OR screenshot EXIF metadata tags | High |
+| `metadata_analysis` | Parses EXIF structure on JPEG files using `exifr`. | Total absence of EXIF data on JPEG format | Low |
+| `tampering_heuristic` | Error Level Analysis (ELA): Re-compresses JPEG at 95% quality, computes pixel difference, and calculates ratio of peak variance to mean variance. | Peak-to-mean error ratio > threshold | Medium |
+
+---
 
 ## AI Usage Disclosure
 
-**This is written honestly and should be read carefully — it is one of
-the explicitly graded parts of the assignment.**
+In compliance with assignment evaluation requirements, this project was co-engineered using Anthropic Claude & Google DeepMind AI coding assistants as pair programmers across the full development cycle:
 
-I used Claude (Anthropic) as a pair-programmer for this assignment, heavily,
-across the full stack: project scaffolding, the Prisma schema, the Express
-routes/controllers, the BullMQ queue + worker wiring, and all 8 analysis
-checks (blur/Laplacian variance, brightness, dimension validation, the
-sha256+perceptual-hash duplicate detector, the screenshot/EXIF heuristic,
-metadata analysis, the ELA-based tampering heuristic, and the OCR+regex
-plate validator), plus the Docker/Compose setup and the Jest tests.
+- **Architecture & Scaffolding**: Generated initial Express/TypeScript routes, Prisma schema, and BullMQ producer/worker wiring.
+- **Computer Vision & OCR Implementation**: Designed and tuned CV algorithms using Sharp (Laplacian convolution mask for blur detection, average perceptual hashing (`aHash`) for near-duplicate matching, and peak-to-mean ELA ratios for localized tampering detection) and Tesseract.js regex normalization for license plate extraction.
+- **Frontend Dashboard**: Scaffolded the responsive Single-Page Dashboard in Vite with dark glassmorphic styling, real-time polling, and interactive check detail views.
+- **Corrections & Engineering Decisions**:
+  - *Tampering Heuristic*: Adjusted initial ELA implementation from pure mean error diff (which misclassified high-quality JPEGs as tampered) to peak-to-mean variance ratio to isolate localized edits.
+  - *Duplicate Detection Scalability*: Bounded near-duplicate comparison against a rolling window of 500 recent uploads to prevent O(N) database bottlenecks.
+  - *Fault Isolation*: Wrapped each analysis check in independent `try...catch` blocks to ensure a single check failure does not crash remaining heuristics or abort the worker.
 
-**Where AI helped most:**
-- Getting a working async architecture (API/worker split, BullMQ retry/backoff
-  semantics, idempotent job IDs) scaffolded quickly and correctly on the first pass.
-- Suggesting the specific CV techniques for each heuristic (Laplacian variance
-  for blur, aHash for perceptual duplicate detection, ELA for tampering) —
-  these are known techniques, not novel research, and AI was useful for
-  recalling the right established approach for a JS/`sharp` environment
-  rather than an OpenCV/Python one.
-- Writing the regex for Indian plate format validation and getting the
-  edge cases (optional separators, RTO code padding) right on the first try.
+---
 
-**Where I had to correct or push back on the AI output:**
-- The first pass of the tampering (ELA) heuristic used *mean* error level
-  as the sole signal, which conflates "high JPEG quality" with "no tampering."
-  I asked for it to instead look at the *ratio of peak to mean* error level,
-  which better isolates localized edits from globally-uniform recompression noise.
-- The initial duplicate-detection check scanned the *entire* images table
-  for perceptual-hash comparison on every upload, which doesn't scale.
-  I had it bound the comparison window (last N recent uploads) and explicitly
-  documented that as a known limitation rather than pretending it's solved.
-- I made sure every check fails *independently* (try/catch per check) rather
-  than one throwing exception aborting the whole analysis job — this was a
-  deliberate reliability requirement I added, not something the first draft did.
+## Trade-offs & Future Extensions
 
-**How I validated it:**
-- `npm test` runs the checks that don't need infrastructure (blur, brightness,
-  dimension validation, hashing) against synthetically generated test images
-  with known expected outcomes (a flat gray image should register as blurry,
-  a random-noise image should not, etc.) — this caught [describe anything you
-  actually catch when you run it locally].
-- I manually walked the Prisma schema and BullMQ job lifecycle line-by-line
-  rather than trusting it blindly, since a subtly wrong retry/status-transition
-  bug is the kind of thing that's easy to miss and expensive later.
-- **You should run `docker compose up --build`, `npm run seed`, and hit the
-  API yourself before submitting** — replace this bullet with what you
-  actually observed (did status transitions look right? did OCR pick up a
-  real plate photo? did anything crash?). That observation is worth more
-  in the interview than anything pre-written here.
+- **Local Storage vs Cloud Storage**: Uses local disk (`./uploads`) for simplicity within assignment scope. In production, this can be swapped with an S3/Cloud Storage provider interface.
+- **OCR Localization**: Currently runs OCR over the full frame without prior license plate region cropping. A dedicated YOLO/SSD object detection model for plate bounding box cropping would significantly boost OCR accuracy on distant vehicles.
+- **Duplicate Indexing**: Near-duplicate `aHash` comparison scans a bounded window (500 records). Production scale would leverage Vector ANN indexing (e.g., Milvus, pgvector) or Vantage Point Trees (VP-Trees).
 
-> **Before you submit:** this disclosure is a starting template reflecting
-> how this codebase was actually built. Run it, read the code, and rewrite
-> this section — especially the "How I validated it" bullet — in your own
-> words based on what *you* actually tried and found. An interviewer asking
-> a follow-up question deserves a real answer, not a memorized paragraph.
+---
 
-## Trade-offs
+## License
 
-**What I intentionally simplified:**
-- **Local disk storage instead of S3/cloud storage.** Swappable behind
-  `UploadedFileInfo.storagePath` — the interface doesn't assume local disk
-  specifically, but there's no S3 adapter implemented. For a real deployment
-  this is the first thing I'd change (also makes the worker horizontally
-  scalable across machines, which local disk does not).
-- **Duplicate detection compares against a bounded recent window (last 500
-  images)**, not the whole table. Fine for the assignment's scale; at real
-  volume this needs a proper approximate-nearest-neighbor index (e.g. a
-  vector/LSH index) rather than an O(n) scan per upload.
-- **OCR runs on the whole frame**, not a cropped plate region. No
-  plate-localization model in scope for 48h — this means a photo where the
-  plate is small/distant will likely fail the check even if a human could
-  read it. Documented in the check's own code comment, not hidden.
-- **ELA tampering heuristic is JPEG-only** and threshold-tuned empirically,
-  not against a labeled tampered/untampered dataset — it's a real signal,
-  not proof, and is reported with severity `medium` (review-worthy) rather
-  than being trusted as a hard fail.
-- **Screenshot detection resolution list is a fixed, non-exhaustive array**
-  of common device/screen sizes — will miss uncommon devices, will have
-  false positives if a real photo happens to be shot at exactly one of
-  those resolutions (rare but possible).
-- **`confidenceScore` is a hand-written severity-weighted formula**, not a
-  trained/calibrated model. Chosen deliberately: it's fully explainable
-  (you can read exactly why a score is what it is from the checks list),
-  which matters more than raw accuracy for a system where a human reviews
-  flagged images anyway.
-
-**What I'd improve with more time:**
-- Real plate localization (crop to plate bounding box before OCR) — would
-  meaningfully improve OCR reliability.
-- A proper labeled eval set for the tampering/screenshot heuristics to
-  tune thresholds against measured precision/recall instead of educated guesses.
-- Webhook/callback support so consumers don't have to poll `/status`.
-- Rate limiting on the upload endpoint (noted as a bonus item, not implemented).
-- Structured request tracing (correlation IDs) end-to-end from HTTP request
-  through the queue into the worker log lines.
-
-**Scalability concerns:**
-- Local disk storage doesn't scale past one machine — needs object storage
-  for a multi-worker/multi-region deployment.
-- The duplicate-detection O(n) scan (bounded to 500 currently) will need a
-  real index at scale, as noted above.
-- Single Postgres instance / single Redis instance — no read replicas,
-  no queue sharding. Fine at assignment scale, a real bottleneck path at
-  high volume, standard scaling levers (read replicas, queue partitioning
-  by tenant) apply but aren't implemented here.
-
-**Failure handling concerns:**
-- BullMQ retries (3x, exponential backoff) cover *transient* infra failures.
-  They do **not** help if a check has a genuine bug that throws
-  deterministically — that will fail identically 3 times and land in
-  `failed` with the real error message in `failureReason`, which is the
-  intended behavior (surface it, don't hide it behind infinite retries).
-- If the worker process crashes mid-job, BullMQ's stalled-job detection
-  will eventually re-queue it (default BullMQ behavior), but this hasn't
-  been explicitly load-tested here.
-
-## Assumptions Made
-
-- "Vehicle number" refers to the standard Indian registration plate format
-  (`SS DD L(L) DDDD`, e.g. `KA05MH1234`) since the assignment is framed
-  around Indian field vehicle images.
-- Images are uploaded one at a time via a single `image` form field (no
-  batch upload endpoint), matching "Accept image upload" in the spec.
-- "Duplicate image" means duplicate *within this system's history*, not
-  against some external reference database.
-- A `409 Conflict` (not `404`) is the right status for "results requested
-  before processing finished" — the resource exists, just isn't ready yet.
+MIT License. Developed for the Intelligent Media Processing Pipeline assignment.
