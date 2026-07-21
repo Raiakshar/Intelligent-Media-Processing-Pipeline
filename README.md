@@ -17,7 +17,7 @@ Place your system screenshots in this section to demonstrate the working dashboa
 ---
 
 ### Detailed Quality Check Inspection Modal
-![alt text](image-3.png)
+![alt text](image-4.png)
 *Figure 2: Comprehensive inspection view rendering individual check results, confidence scores, issue flags, license plate extractions, and expandable diagnostic metadata.*
 
 ---

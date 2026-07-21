@@ -7,7 +7,6 @@ export async function uploadImage(req: Request, res: Response) {
   if (!req.file) {
     return res.status(400).json({ error: 'No image file provided. Use multipart/form-data with field name "image".' });
   }
-
   try {
     const image = await createImageRecord({
       originalName: req.file.originalname,
@@ -16,7 +15,6 @@ export async function uploadImage(req: Request, res: Response) {
       mimeType: req.file.mimetype,
       sizeBytes: req.file.size,
     });
-
     // Return the processing ID immediately -- analysis has NOT run yet.
     return res.status(202).json({
       id: image.id,

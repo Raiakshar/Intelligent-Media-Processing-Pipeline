@@ -60,8 +60,8 @@ function formatCheckName(name) {
   return names[name] || name.replace(/_/g, ' ').toUpperCase();
 }
 
-function extractPlateData(imageRecord) {
-  const checks = imageRecord.analysisResult?.checks || [];
+function extractPlateData(checks) {
+  if (!checks || !Array.isArray(checks)) return null;
   const ocrCheck = checks.find((c) => c.check === 'ocr_plate_validation');
   if (ocrCheck && ocrCheck.passed && ocrCheck.details?.extractedPlate) {
     return {
@@ -397,7 +397,7 @@ async function openForensicModal(imageId) {
     const analysis = results.analysis || img.analysisResult;
     const checks = analysis?.checks || [];
     const overall = analysis?.overallStatus || 'clean';
-    const plateData = extractPlateData(img);
+    const plateData = extractPlateData(checks);
 
     // Render ALPR Card if plate found
     let alprCardHtml = '';
