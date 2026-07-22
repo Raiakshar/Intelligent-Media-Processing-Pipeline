@@ -5,8 +5,8 @@ An end-to-end, asynchronous media processing system and interactive visual dashb
 Designed to handle high-concurrency vehicle image uploads, queuing them for distributed computer vision analysis to automatically extract and validate vehicle registration plates, detect quality issues (blur, lighting anomalies), identify duplicate submissions, inspect photo tampering, and verify metadata integrity in real time.
 
 ---
+- Deployed Link :
 https://intelligent-media-processing-pipeline-1.onrender.com/
-
 
 ## Project Outcomes & System Screenshots
 
@@ -19,7 +19,12 @@ Place your system screenshots in this section to demonstrate the working dashboa
 ---
 
 ### Detailed Quality Check Inspection Modal
-![alt text](image-4.png)
+
+<img width="2260" height="1554" alt="image" src="https://github.com/user-attachments/assets/0129f42e-76d6-4829-b6b1-681002a7480b" />
+<img width="2220" height="1530" alt="image" src="https://github.com/user-attachments/assets/ff046cd0-710d-4d94-8378-de5c9629c7f6" />
+<img width="2208" height="1508" alt="image" src="https://github.com/user-attachments/assets/0e6a41e7-9ed5-4ab8-be19-b1f2de0dd76a" />
+
+
 *Figure 2: Comprehensive inspection view rendering individual check results, confidence scores, issue flags, license plate extractions, and expandable diagnostic metadata.*
 
 ---
