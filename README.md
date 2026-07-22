@@ -111,6 +111,15 @@ Vehicle registration plate detection and validation is a core automated feature 
 └────────────────────────────────└────────────────────────────────────────────────┘
 ```
 
+### Production & Cloud Deployment Architecture (Render)
+
+The application is structured for cloud-native deployment on PaaS platforms like **Render**:
+
+- **Web Service & Worker (Docker)**: Deployed as a unified Docker Web Service on Render (`node dist/src/queue/worker.js & node dist/src/server.js`). Automatically executes Prisma migrations (`npx prisma migrate deploy`) upon boot, initializes the Express REST server, and runs the BullMQ background worker concurrently.
+- **Database Layer**: Managed **Render PostgreSQL** instance providing persistent storage for image lifecycle records, EXIF metadata, and diagnostic JSON payloads.
+- **Queue / State Layer**: Managed **Render Key-Value (Redis)** store handling BullMQ job queues, concurrency locks, and retry backoff states.
+- **Frontend Layer**: Hosted as a high-performance **Render Static Site** (built via Vite), communicating asynchronously with the live backend API endpoint (`VITE_API_BASE_URL`).
+
 ---
 
 ## Tech Stack & Technical Rationale
@@ -395,9 +404,11 @@ In compliance with assignment evaluation requirements, this project was co-engin
 
 ## Trade-offs & Future Extensions
 
-- **Local Storage vs Cloud Storage**: Uses local disk (`./uploads`) for simplicity within assignment scope. In production, this can be swapped with an S3/Cloud Storage provider interface.
-- **OCR Localization**: Currently runs OCR over the full frame without prior license plate region cropping. A dedicated YOLO/SSD object detection model for plate bounding box cropping would significantly boost OCR accuracy on distant vehicles.
-- **Duplicate Indexing**: Near-duplicate `aHash` comparison scans a bounded window (500 records). Production scale would leverage Vector ANN indexing (e.g., Milvus, pgvector) or Vantage Point Trees (VP-Trees).
+- **Local Storage vs Cloud Blob Storage**: Uses local disk (`./uploads`) for zero-config simplicity within assignment scope. On ephemeral PaaS providers like Render, disk storage is non-persistent across instance redeploys. In enterprise production, this is designed to be swapped with an S3 / Google Cloud Storage / Vercel Blob adapter for durable multi-region media storage.
+- **Single-Container Process Concurrency vs Decoupled Microservices**: To allow single-click deployment on Render without requiring separate paid background worker tiers, the Express API and BullMQ worker run concurrently in one container (`node dist/src/queue/worker.js & node dist/src/server.js`). For high-throughput production workloads, the Web API and worker processes should be separated into independently autoscaling service pools.
+- **OCR Localization & Bounding Box Detection**: Currently runs OCR over the full image frame without prior license plate region cropping. A dedicated YOLOv8 / SSD object detection model for plate bounding box cropping would significantly boost OCR speed and accuracy on wide-angle or distant vehicle photos.
+- **Duplicate Search Scalability**: Near-duplicate `aHash` comparison scans a rolling window of recent uploads (500 records). Production scale would leverage Vector ANN indexing (e.g., Milvus, `pgvector`) or Vantage Point Trees (VP-Trees) for O(log N) similarity search across millions of images.
+- **Client Polling vs Real-Time WebSockets / Webhooks**: The SPA dashboard uses short-polling (`GET /images/:id/status`) every 2 seconds. Production architectures would implement WebSockets (Socket.io) or webhook callbacks to push status transitions to clients instantly.
 
 ---
 
