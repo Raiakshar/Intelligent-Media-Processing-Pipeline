@@ -5,6 +5,8 @@ An end-to-end, asynchronous media processing system and interactive visual dashb
 Designed to handle high-concurrency vehicle image uploads, queuing them for distributed computer vision analysis to automatically extract and validate vehicle registration plates, detect quality issues (blur, lighting anomalies), identify duplicate submissions, inspect photo tampering, and verify metadata integrity in real time.
 
 ---
+https://intelligent-media-processing-pipeline-1.onrender.com/
+
 
 ## Project Outcomes & System Screenshots
 
