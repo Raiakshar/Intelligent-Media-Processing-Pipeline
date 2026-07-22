@@ -4,7 +4,7 @@
 
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL ||
-  "http://localhost:3000";
+  "https://intelligent-media-processing-pipeline-q20l.onrender.com";
 
 /**
  * Upload a single image file.
