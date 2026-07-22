@@ -391,13 +391,13 @@ npm test
 
 In compliance with assignment evaluation requirements, this project was co-engineered using Anthropic Claude & Google DeepMind AI coding assistants as pair programmers across the full development cycle:
 
-- **Architecture & Scaffolding**: Generated initial Express/TypeScript routes, Prisma schema, and BullMQ producer/worker wiring.
-- **Computer Vision & OCR Implementation**: Designed and tuned CV algorithms using Sharp (Laplacian convolution mask for blur detection, average perceptual hashing (`aHash`) for near-duplicate matching, and peak-to-mean ELA ratios for localized tampering detection) and Tesseract.js regex normalization for license plate extraction.
-- **Frontend Dashboard**: Scaffolded the responsive Single-Page Dashboard in Vite with dark glassmorphic styling, real-time polling, and interactive check detail views.
-- **Corrections & Engineering Decisions**:
-  - *Tampering Heuristic*: Adjusted initial ELA implementation from pure mean error diff (which misclassified high-quality JPEGs as tampered) to peak-to-mean variance ratio to isolate localized edits.
-  - *Duplicate Detection Scalability*: Bounded near-duplicate comparison against a rolling window of 500 recent uploads to prevent O(N) database bottlenecks.
-  - *Fault Isolation*: Wrapped each analysis check in independent `try...catch` blocks to ensure a single check failure does not crash remaining heuristics or abort the worker.
+1. **Where AI was used**: Backend scaffolding (Express routes, Prisma schema, BullMQ wiring), the computer vision/OCR heuristics in src/analysis/, the Vite frontend dashboard, and this documentation.
+
+2. **What AI helped with**: Boilerplate generation for routine patterns, first-pass implementations of the 8 analysis checks, the fault-isolation pattern (per-check try...catch), and drafting the dashboard UI and docs.
+
+3. **Where AI's output was wrong**: ELA tampering check flagged clean high-quality JPEGs as tampered (used raw mean error diff instead of peak-to-mean ratio) — fixed. Duplicate detection initially compared against the entire image history (O(N) bottleneck) — bounded to a rolling window of 500.
+
+4. **How AI code was validated**: Manually reviewed before merging, checked against the unit test suite (tests/analysis.test.ts), tested end-to-end with seeded sample images, thresholds tuned against real vehicle photos, and confirmed working via full deployment on Render.
 
 ---
 
