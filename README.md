@@ -2,6 +2,7 @@
 
 A system that automatically checks vehicle photos as people upload them — reading license plates, spotting blurry or badly-lit shots, catching duplicates, and flagging photos that look edited or tampered with. Built with Express, TypeScript, BullMQ, Redis, PostgreSQL, Prisma, Sharp, Tesseract.js, and a Vite frontend.
 It's designed to handle a lot of uploads at once without slowing down — each photo is queued and analyzed in the background to pull out the license plate, check image quality (blur, lighting), find duplicate submissions, look for signs of tampering, and confirm the photo's metadata is intact, all in real time.
+
 ---
 - Deployed Link :
 https://intelligent-media-processing-pipeline-1.onrender.com/
