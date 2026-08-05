@@ -2,9 +2,10 @@
    API Client — Talks to the media-pipeline Express backend
    ============================================================ */
 
-export const API_BASE =
-  import.meta.env.VITE_API_BASE_URL ||
-  "https://intelligent-media-processing-pipeline-q20l.onrender.com";
+// In production (Render), the frontend is served from the same Express server
+// so we use relative URLs (empty string). Locally, set VITE_API_BASE_URL in
+// frontend/.env to http://localhost:3000
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
 /**
  * Upload a single image file.

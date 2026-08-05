@@ -1,4 +1,6 @@
 import express, { NextFunction, Request, Response } from 'express';
+import path from 'path';
+import fs from 'fs';
 import cors from 'cors';
 import morgan from 'morgan';
 import multer from 'multer';
@@ -14,6 +16,12 @@ export function createApp() {
 
   // Serve uploaded images so the frontend can display them
   app.use('/uploads', express.static(config.uploadDir));
+
+  // Serve the built Vite frontend (production only)
+  const frontendDist = path.resolve(__dirname, '../../frontend/dist');
+  if (fs.existsSync(frontendDist)) {
+    app.use(express.static(frontendDist));
+  }
   app.use(
     morgan('combined', {
       stream: { write: (msg: string) => logger.info('http', { line: msg.trim() }) },
@@ -24,7 +32,12 @@ export function createApp() {
 
   app.use('/images', imagesRouter);
 
+  // SPA fallback — serve index.html for any non-API route
   app.use((req: Request, res: Response) => {
+    const frontendIndex = path.resolve(__dirname, '../../frontend/dist/index.html');
+    if (!req.path.startsWith('/images') && !req.path.startsWith('/health') && !req.path.startsWith('/uploads') && fs.existsSync(frontendIndex)) {
+      return res.sendFile(frontendIndex);
+    }
     res.status(404).json({ error: `Route not found: ${req.method} ${req.originalUrl}` });
   });
 
