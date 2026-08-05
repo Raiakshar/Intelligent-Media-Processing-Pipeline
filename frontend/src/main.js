@@ -228,8 +228,8 @@ function renderApp() {
   `;
 
   bindEvents();
-  // Pass isStartup=true: shows CONNECTING, retries up to 3×, then loads data
-  checkSystemHealth(true);
+  // Poll every 2s until API responds — handles Render free-tier cold starts
+  waitForAPIOnline();
 }
 
 /* ----------------------------------------------------------
@@ -531,33 +531,56 @@ function pollImageStatus(imageId) {
 }
 
 /* ----------------------------------------------------------
-   Health Checks
+   Health Checks — bulletproof for Render free-tier cold starts
    ---------------------------------------------------------- */
-async function checkSystemHealth(isStartup = false) {
+function setStatusUI(online, label) {
   const dot = document.getElementById('status-dot');
   const text = document.getElementById('status-text');
-
-  // Show connecting state while checking
-  if (isStartup) {
-    dot?.classList.remove('offline');
-    if (text) text.textContent = 'CONNECTING...';
-  }
-
-  // On startup use retries (handles Render cold start); periodic checks use 1 attempt
-  state.isOnline = await healthCheck(isStartup ? { retries: 3, delayMs: 2000 } : { retries: 0 });
-
-  if (state.isOnline) {
-    dot?.classList.remove('offline');
-    if (text) text.textContent = 'SYSTEM ONLINE';
-    // On startup, load data only after we confirm the API is up
-    if (isStartup) loadInspectionData();
+  if (!dot || !text) return;
+  if (online === 'connecting') {
+    dot.classList.remove('offline');
+    text.textContent = label || 'WAKING UP...';
+  } else if (online) {
+    dot.classList.remove('offline');
+    text.textContent = 'SYSTEM ONLINE';
   } else {
-    dot?.classList.add('offline');
-    if (text) text.textContent = 'API OFFLINE';
+    dot.classList.add('offline');
+    text.textContent = 'API OFFLINE';
   }
 }
 
-setInterval(checkSystemHealth, 10000);
+// Called once on boot — polls every 2s until API responds, then loads data
+async function waitForAPIOnline() {
+  setStatusUI('connecting');
+  let attempt = 0;
+  while (true) {
+    const ok = await healthCheck();
+    if (ok) {
+      state.isOnline = true;
+      setStatusUI(true);
+      loadInspectionData();
+      return;
+    }
+    attempt++;
+    // After 5 failed attempts (~10s) label changes to WAKING UP...
+    if (attempt >= 5) setStatusUI('connecting', 'WAKING UP...');
+    await new Promise(r => setTimeout(r, 2000));
+  }
+}
+
+// Periodic check every 10s — auto-recovers from offline state
+async function periodicHealthCheck() {
+  const wasOnline = state.isOnline;
+  state.isOnline = await healthCheck();
+  setStatusUI(state.isOnline);
+  // If we just came back online, reload the data grid
+  if (!wasOnline && state.isOnline) {
+    showToast('Connection restored — syncing data.', 'success');
+    loadInspectionData();
+  }
+}
+
+setInterval(periodicHealthCheck, 10000);
 
 /* ----------------------------------------------------------
    Upload Actions
@@ -643,8 +666,8 @@ function bindEvents() {
   document.getElementById('refresh-trigger').addEventListener('click', async () => {
     const btn = document.getElementById('refresh-trigger');
     btn.classList.add('spinning');
-    await loadInspectionData();
-    await checkSystemHealth();
+    await periodicHealthCheck();
+    if (state.isOnline) await loadInspectionData();
     setTimeout(() => btn.classList.remove('spinning'), 600);
   });
 

@@ -76,16 +76,14 @@ export async function getImageFailure(id) {
 }
 
 /**
- * Simple health check — retries up to `retries` times with `delayMs` gap.
- * Handles Render free-tier cold starts gracefully.
+ * Simple health check — single attempt, no retries.
+ * Returns true if the server responds with 200 OK.
  */
-export async function healthCheck({ retries = 3, delayMs = 2000 } = {}) {
-  for (let i = 0; i <= retries; i++) {
-    try {
-      const res = await fetch(`${API_BASE}/health`);
-      if (res.ok) return true;
-    } catch { /* network error — keep retrying */ }
-    if (i < retries) await new Promise(r => setTimeout(r, delayMs));
+export async function healthCheck() {
+  try {
+    const res = await fetch(`${API_BASE}/health`);
+    return res.ok;
+  } catch {
+    return false;
   }
-  return false;
 }
