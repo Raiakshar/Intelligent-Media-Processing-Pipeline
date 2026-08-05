@@ -228,8 +228,8 @@ function renderApp() {
   `;
 
   bindEvents();
-  checkSystemHealth();
-  loadInspectionData();
+  // Pass isStartup=true: shows CONNECTING, retries up to 3×, then loads data
+  checkSystemHealth(true);
 }
 
 /* ----------------------------------------------------------
@@ -533,20 +533,31 @@ function pollImageStatus(imageId) {
 /* ----------------------------------------------------------
    Health Checks
    ---------------------------------------------------------- */
-async function checkSystemHealth() {
-  state.isOnline = await healthCheck();
+async function checkSystemHealth(isStartup = false) {
   const dot = document.getElementById('status-dot');
   const text = document.getElementById('status-text');
+
+  // Show connecting state while checking
+  if (isStartup) {
+    dot?.classList.remove('offline');
+    if (text) text.textContent = 'CONNECTING...';
+  }
+
+  // On startup use retries (handles Render cold start); periodic checks use 1 attempt
+  state.isOnline = await healthCheck(isStartup ? { retries: 3, delayMs: 2000 } : { retries: 0 });
+
   if (state.isOnline) {
-    dot.classList.remove('offline');
-    text.textContent = 'SYSTEM ONLINE';
+    dot?.classList.remove('offline');
+    if (text) text.textContent = 'SYSTEM ONLINE';
+    // On startup, load data only after we confirm the API is up
+    if (isStartup) loadInspectionData();
   } else {
-    dot.classList.add('offline');
-    text.textContent = 'API OFFLINE';
+    dot?.classList.add('offline');
+    if (text) text.textContent = 'API OFFLINE';
   }
 }
 
-setInterval(checkSystemHealth, 30000);
+setInterval(checkSystemHealth, 10000);
 
 /* ----------------------------------------------------------
    Upload Actions
