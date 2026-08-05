@@ -2,7 +2,7 @@
    API Client — Talks to the media-pipeline Express backend
    ============================================================ */
 
-const API_BASE =
+export const API_BASE =
   import.meta.env.VITE_API_BASE_URL ||
   "https://intelligent-media-processing-pipeline-q20l.onrender.com";
 

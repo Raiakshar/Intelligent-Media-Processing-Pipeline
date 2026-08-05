@@ -11,6 +11,7 @@ import {
   getImageResults,
   getImageFailure,
   healthCheck,
+  API_BASE,
 } from './api.js';
 
 /* ----------------------------------------------------------
@@ -296,7 +297,7 @@ function renderVehicleCard(img) {
   return `
     <div class="vehicle-card" onclick="window.__openForensicModal('${img.id}')">
       <div class="card-viewport">
-        <img src="https://intelligent-media-processing-pipeline-q20l.onrender.com/uploads/${img.storedFilename}" alt="${img.originalName}"
+        <img src="${API_BASE}/uploads/${img.storedFilename}" alt="${img.originalName}"
              onerror="this.style.display='none';" />
         <span class="card-status-pill ${img.status}">${img.status}</span>
         ${plateBadgeHtml}
@@ -357,7 +358,7 @@ async function openForensicModal(imageId) {
   if (img.status === 'pending' || img.status === 'processing') {
     splitBody.innerHTML = `
       <div class="pane-viewport">
-        <img class="inspection-canvas" src="https://intelligent-media-processing-pipeline-q20l.onrender.com/uploads/${img.storedFilename}" />
+        <img class="inspection-canvas" src="${API_BASE}/uploads/${img.storedFilename}" />
         <div class="file-info-table">
           <div><div class="info-cell-label">FILE SIZE</div><div class="info-cell-val">${formatBytes(img.sizeBytes)}</div></div>
           <div><div class="info-cell-label">MIME TYPE</div><div class="info-cell-val">${img.mimeType}</div></div>
@@ -379,7 +380,7 @@ async function openForensicModal(imageId) {
     try { failure = await getImageFailure(imageId); } catch { /* ignore */ }
     splitBody.innerHTML = `
       <div class="pane-viewport">
-        <img class="inspection-canvas" src="https://intelligent-media-processing-pipeline-q20l.onrender.com/uploads/${img.storedFilename}" />
+        <img class="inspection-canvas" src="${API_BASE}/uploads/${img.storedFilename}" />
       </div>
       <div class="pane-diagnostics">
         <div style="background: var(--status-fail-bg); border: 1px solid var(--status-fail-border); padding: 1.25rem; border-radius: 10px; color: var(--status-fail);">
@@ -438,7 +439,7 @@ async function openForensicModal(imageId) {
 
     splitBody.innerHTML = `
       <div class="pane-viewport">
-        <img class="inspection-canvas" src="https://intelligent-media-processing-pipeline-q20l.onrender.com/uploads/${img.storedFilename}" />
+        <img class="inspection-canvas" src="${API_BASE}/uploads/${img.storedFilename}" />
         <div class="file-info-table">
           <div><div class="info-cell-label">FILE SIZE</div><div class="info-cell-val">${formatBytes(img.sizeBytes)}</div></div>
           <div><div class="info-cell-label">MIME TYPE</div><div class="info-cell-val">${img.mimeType}</div></div>
