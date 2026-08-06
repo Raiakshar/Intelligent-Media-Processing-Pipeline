@@ -1,12 +1,12 @@
 import { createApp } from './app';
 import { config } from './config';
 import { logger } from './utils/logger';
+import './queue/worker'; // Start BullMQ worker in process so queued images analyze immediately
 
 const app = createApp();
 
 const server = app.listen(config.port, () => {
   logger.info('server started', { port: config.port, env: config.nodeEnv });
-  logger.info('reminder: run `npm run dev:worker` in a separate process to actually process queued jobs');
 });
 
 process.on('SIGTERM', () => {

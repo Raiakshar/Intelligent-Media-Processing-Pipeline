@@ -51,37 +51,40 @@ export async function extractAndValidatePlate(filePath: string): Promise<CheckRe
 
   let textLines: string[] = [];
   try {
-    const worker = await createWorker('eng');
+    // 12s timeout race to prevent Tesseract from hanging free-tier cloud containers
+    const ocrPromise = (async () => {
+      const worker = await createWorker('eng');
+      try {
+        const result1 = await worker.recognize(filePath);
+        if (result1?.data?.text) {
+          textLines.push(...result1.data.text.split('\n'));
+        }
 
-    // Attempt 1: Raw image recognition
-    const result1 = await worker.recognize(filePath);
-    if (result1.data.text) {
-      textLines.push(...result1.data.text.split('\n'));
-    }
-
-    // Attempt 2: Contrast enhanced + grayscale preprocessed image for clearer text extraction
-    try {
-      const processedBuffer = await sharp(filePath)
-        .resize({ width: 1200, withoutEnlargement: true })
-        .grayscale()
-        .linear(1.2, -10) // boost contrast
-        .toBuffer();
-      const result2 = await worker.recognize(processedBuffer);
-      if (result2.data.text) {
-        textLines.push(...result2.data.text.split('\n'));
+        try {
+          const processedBuffer = await sharp(filePath)
+            .resize({ width: 1200, withoutEnlargement: true })
+            .grayscale()
+            .linear(1.2, -10)
+            .toBuffer();
+          const result2 = await worker.recognize(processedBuffer);
+          if (result2?.data?.text) {
+            textLines.push(...result2.data.text.split('\n'));
+          }
+        } catch { /* ignore sharp preprocessing */ }
+      } finally {
+        await worker.terminate();
       }
-    } catch {
-      // Ignore sharp preprocessing failure if any
-    }
+    })();
 
-    await worker.terminate();
+    const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 12000));
+    await Promise.race([ocrPromise, timeoutPromise]);
   } catch (err) {
     return {
       check: 'ocr_plate_validation',
       passed: false,
       severity: 'low',
       details: { error: err instanceof Error ? err.message : String(err) },
-      message: 'OCR engine failed to process this image',
+      message: 'OCR engine timed out or failed to process this image',
     };
   }
 
