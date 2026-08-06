@@ -7,7 +7,6 @@ import multer from 'multer';
 import imagesRouter from './routes/images';
 import { logger } from './utils/logger';
 import { config } from './config';
-import { getImageFileByFilename } from './services/imageService';
 
 export function createApp() {
   const app = express();
@@ -15,36 +14,8 @@ export function createApp() {
   app.use(cors());
   app.use(express.json());
 
-  // Serve uploaded images — disk first, DB fallback for ephemeral hosts like Render.
-  // Using a single middleware avoids express.static silently dropping to SPA fallback.
-  app.get('/uploads/:filename', async (req: Request, res: Response, next: NextFunction) => {
-    const { filename } = req.params;
-    const diskPath = path.join(config.uploadDir, filename);
-    // 1️⃣ Try disk first (fast path, works in local dev)
-    if (fs.existsSync(diskPath)) {
-      return res.sendFile(diskPath, { root: '/' });
-    }
-    // 2️⃣ Disk file missing (Render restart wiped uploads/) — serve from DB
-    try {
-      const record = await getImageFileByFilename(filename);
-      if (!record?.imageData) {
-        return res.status(404).json({ error: 'Image not found' });
-      }
-      // imageData stored as "data:image/jpeg;base64,<base64>"
-      const commaIdx = record.imageData.indexOf(',');
-      const header   = record.imageData.slice(0, commaIdx);
-      const base64   = record.imageData.slice(commaIdx + 1);
-      const mimeMatch = header.match(/data:([^;]+);base64/);
-      const mimeType  = mimeMatch ? mimeMatch[1] : (record.mimeType || 'image/jpeg');
-      const buffer    = Buffer.from(base64, 'base64');
-      res.set('Content-Type', mimeType);
-      res.set('Cache-Control', 'public, max-age=31536000, immutable');
-      return res.send(buffer);
-    } catch (err) {
-      logger.error('failed to serve image from DB', { filename, error: String(err) });
-      return next(err);
-    }
-  });
+  // Serve uploaded images so the frontend can display them
+  app.use('/uploads', express.static(config.uploadDir));
 
   // Serve the built Vite frontend (production only)
   const frontendDist = path.resolve(__dirname, '../../frontend/dist');

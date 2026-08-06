@@ -85,20 +85,14 @@ export async function getImageFailure(id) {
 }
 
 /**
- * Health check with quick internal retries (up to 2 attempts, 1s delay)
- * to prevent false-positive "API OFFLINE" states caused by temporary packet drops.
+ * Simple health check — single attempt, no retries.
+ * Returns true if the server responds with 200 OK.
  */
-export async function healthCheck(retries = 2) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const res = await fetch(`${API_BASE}/health`);
-      if (res.ok) return true;
-    } catch {
-      /* retry on next iteration */
-    }
-    if (i < retries - 1) {
-      await new Promise((r) => setTimeout(r, 1000));
-    }
+export async function healthCheck() {
+  try {
+    const res = await fetch(`${API_BASE}/health`);
+    return res.ok;
+  } catch {
+    return false;
   }
-  return false;
 }
