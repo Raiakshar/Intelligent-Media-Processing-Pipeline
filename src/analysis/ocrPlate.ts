@@ -1,14 +1,13 @@
 import { createWorker } from 'tesseract.js';
+import sharp from 'sharp';
 import { CheckResult } from './types';
 import { sha256File } from '../utils/hash';
+import { extractBestPlate } from './plateMatcher';
 
-// Standard Indian registration plate format: SS DD LL(L) DDDD
-// Allows an optional space/hyphen between groups since OCR + real plates
-// are inconsistent about separators.
+// Standard Indian registration plate format regex fallback
 const PLATE_REGEX = /\b([A-Z]{2})[\s-]?(\d{1,2})[\s-]?([A-Z]{1,2})[\s-]?(\d{4})\b/;
 
 function normalizeOcrText(raw: string): string {
-  // We only strip whitespace/noise and uppercase, then regex-match against the real characters found.
   return raw.toUpperCase().replace(/[^A-Z0-9\s-]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
@@ -50,11 +49,31 @@ export async function extractAndValidatePlate(filePath: string): Promise<CheckRe
     };
   }
 
-  let text = '';
+  let textLines: string[] = [];
   try {
     const worker = await createWorker('eng');
-    const result = await worker.recognize(filePath);
-    text = result.data.text || '';
+
+    // Attempt 1: Raw image recognition
+    const result1 = await worker.recognize(filePath);
+    if (result1.data.text) {
+      textLines.push(...result1.data.text.split('\n'));
+    }
+
+    // Attempt 2: Contrast enhanced + grayscale preprocessed image for clearer text extraction
+    try {
+      const processedBuffer = await sharp(filePath)
+        .resize({ width: 1200, withoutEnlargement: true })
+        .grayscale()
+        .linear(1.2, -10) // boost contrast
+        .toBuffer();
+      const result2 = await worker.recognize(processedBuffer);
+      if (result2.data.text) {
+        textLines.push(...result2.data.text.split('\n'));
+      }
+    } catch {
+      // Ignore sharp preprocessing failure if any
+    }
+
     await worker.terminate();
   } catch (err) {
     return {
@@ -66,34 +85,57 @@ export async function extractAndValidatePlate(filePath: string): Promise<CheckRe
     };
   }
 
-  const normalized = normalizeOcrText(text);
-  const match = normalized.match(PLATE_REGEX);
+  // Use fuzzy state-machine plate matcher on all extracted text lines
+  const matchedPlate = extractBestPlate(textLines);
 
-  if (!match) {
+  if (matchedPlate) {
     return {
       check: 'ocr_plate_validation',
-      passed: false,
-      severity: 'medium',
-      details: { rawOcrTextLength: text.length, normalizedSample: normalized.slice(0, 120) },
-      message: 'No text matching Indian vehicle plate format was found in the image',
+      passed: true,
+      severity: 'none',
+      details: {
+        extractedPlate: matchedPlate.plate,
+        stateCode: matchedPlate.stateCode,
+        rtoCode: matchedPlate.rtoCode,
+        seriesCode: matchedPlate.seriesCode,
+        uniqueNumber: matchedPlate.uniqueNumber,
+        rawMatch: matchedPlate.rawMatch,
+        confidence: matchedPlate.confidence,
+        score: matchedPlate.score,
+      },
+      message: `Valid-format plate detected: ${matchedPlate.plate}`,
     };
   }
 
-  const [full, state, rto, series, number] = match;
-  const plate = `${state}${rto.padStart(2, '0')}${series}${number}`;
+  // Regex fallback if state machine returns null
+  const combinedText = textLines.join(' ');
+  const normalized = normalizeOcrText(combinedText);
+  const match = normalized.match(PLATE_REGEX);
+
+  if (match) {
+    const [full, state, rto, series, number] = match;
+    const plate = `${state}${rto.padStart(2, '0')}${series}${number}`;
+    return {
+      check: 'ocr_plate_validation',
+      passed: true,
+      severity: 'none',
+      details: {
+        extractedPlate: plate,
+        stateCode: state,
+        rtoCode: rto,
+        seriesCode: series,
+        uniqueNumber: number,
+        rawMatch: full,
+      },
+      message: `Valid-format plate detected: ${plate}`,
+    };
+  }
 
   return {
     check: 'ocr_plate_validation',
-    passed: true,
-    severity: 'none',
-    details: {
-      extractedPlate: plate,
-      stateCode: state,
-      rtoCode: rto,
-      seriesCode: series,
-      uniqueNumber: number,
-      rawMatch: full,
-    },
-    message: `Valid-format plate detected: ${plate}`,
+    passed: false,
+    severity: 'medium',
+    details: { rawOcrTextLength: combinedText.length, normalizedSample: normalized.slice(0, 120) },
+    message: 'No text matching Indian vehicle plate format was found in the image',
   };
 }
