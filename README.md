@@ -368,32 +368,30 @@ Returns 409 unless status is `failed`.
 
 ---
 
-## Trade-offs I made and what I'd change
+## AI Usage Disclosure
 
-**Local disk storage** — works fine for this project but Render wipes it on restart. The imageData column in Postgres is a workaround, not a real solution. Production version would use S3 or similar.
+In compliance with assignment evaluation requirements, this project was co-engineered using Anthropic Claude & Google DeepMind AI coding assistants as pair programmers across the full development cycle:
 
-**Single container for API + worker** — easier to deploy on Render's free tier without paying for a separate background worker service. For real production load they should be separate services that scale independently.
+1. **Where AI was used**: Backend scaffolding (Express routes, Prisma schema, BullMQ wiring), the computer vision/OCR heuristics in src/analysis/, the Vite frontend dashboard, and this documentation.
 
-**Full-frame OCR** — I deliberately skipped object detection models (YOLO etc.) because they'd need GPU and make the setup way more complex. Tesseract on the full image works for clear vehicle photos. If I were extending this, I'd add a plate-bounding-box step before running OCR.
+2. **What AI helped with**: Boilerplate generation for routine patterns, first-pass implementations of the 8 analysis checks, the fault-isolation pattern (per-check try...catch), and drafting the dashboard UI and docs.
 
-**Polling vs WebSockets** — the frontend polls every 2 seconds. For a real product WebSockets or webhooks would be cleaner, but polling is simple and reliable for this scale.
+3. **Where AI's output was wrong**: ELA tampering check flagged clean high-quality JPEGs as tampered (used raw mean error diff instead of peak-to-mean ratio) — fixed. Duplicate detection initially compared against the entire image history (O(N) bottleneck) — bounded to a rolling window of 500.
 
-**Duplicate search window** — currently checks against the last 500 uploads to keep it O(N) manageable. At real scale you'd want pgvector or a proper ANN index.
+4. **How AI code was validated**: Manually reviewed before merging, checked against the unit test suite (tests/analysis.test.ts), tested end-to-end with seeded sample images, thresholds tuned against real vehicle photos, and confirmed working via full deployment on Render.
 
 ---
 
-## AI Usage Disclosure
+## Trade-offs & Future Extensions
 
-Used Claude and Gemini as pair programmers throughout — helped with boilerplate (Express routes, Prisma setup, BullMQ wiring), first-pass implementations of the 8 checks, the fault-isolation pattern (per-check try/catch), and the frontend dashboard.
-
-Things I had to fix from AI output:
-- ELA tampering check was flagging clean JPEGs as tampered — it was using raw mean error diff instead of peak-to-mean ratio. Fixed the formula.
-- Duplicate detection was scanning the entire history (O(N) on millions of rows) — bounded it to a rolling window of 500.
-
-All code was reviewed manually, run through the test suite, tested end-to-end with sample images, and verified working on Render.
+- **Local Storage vs Cloud Blob Storage**: Uses local disk (`./uploads`) for zero-config simplicity within assignment scope. On ephemeral PaaS providers like Render, disk storage is non-persistent across instance redeploys. In enterprise production, this is designed to be swapped with an S3 / Google Cloud Storage / Vercel Blob adapter for durable multi-region media storage.
+- **Single-Container Process Concurrency vs Decoupled Microservices**: To allow single-click deployment on Render without requiring separate paid background worker tiers, the Express API and BullMQ worker run concurrently in one container (`node dist/src/queue/worker.js & node dist/src/server.js`). For high-throughput production workloads, the Web API and worker processes should be separated into independently autoscaling service pools.
+- **Full-Frame OCR vs Bounding-Box Detection**: This project deliberately does **not** use heavy object detection models (like YOLO or SSD) in order to keep the system lightweight, fast, and 100% executable in Node.js without GPU dependencies. Instead, it runs Tesseract.js directly over the full image frame paired with `sharp` contrast normalization and regex pattern extraction. A future production extension could add a bounding-box cropping pre-step to isolate license plates prior to OCR.
+- **Duplicate Search Scalability**: Near-duplicate `aHash` comparison scans a rolling window of recent uploads (500 records). Production scale would leverage Vector ANN indexing (e.g., Milvus, `pgvector`) or Vantage Point Trees (VP-Trees) for O(log N) similarity search across millions of images.
+- **Client Polling vs Real-Time WebSockets / Webhooks**: The SPA dashboard uses short-polling (`GET /images/:id/status`) every 2 seconds. Production architectures would implement WebSockets (Socket.io) or webhook callbacks to push status transitions to clients instantly.
 
 ---
 
 ## License
 
-MIT
+MIT License. Developed for the Intelligent Media Processing Pipeline assignment.
