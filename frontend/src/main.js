@@ -585,15 +585,28 @@ async function waitForAPIOnline() {
   }
 }
 
+let consecutiveFailures = 0;
+
 // Periodic check every 10s — auto-recovers from offline state
 async function periodicHealthCheck() {
   const wasOnline = state.isOnline;
-  state.isOnline = await healthCheck();
-  setStatusUI(state.isOnline);
-  // If we just came back online, reload the data grid
-  if (!wasOnline && state.isOnline) {
-    showToast('Connection restored — syncing data.', 'success');
-    loadInspectionData();
+  const isHealthy = await healthCheck(2);
+
+  if (isHealthy) {
+    consecutiveFailures = 0;
+    state.isOnline = true;
+    setStatusUI(true);
+    if (!wasOnline) {
+      showToast('Connection restored — syncing data.', 'success');
+      loadInspectionData();
+    }
+  } else {
+    consecutiveFailures++;
+    // Require 2 consecutive failures before switching status to offline
+    if (consecutiveFailures >= 2) {
+      state.isOnline = false;
+      setStatusUI(false);
+    }
   }
 }
 
