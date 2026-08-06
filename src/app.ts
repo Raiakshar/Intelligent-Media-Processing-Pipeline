@@ -5,6 +5,8 @@ import cors from 'cors';
 import morgan from 'morgan';
 import multer from 'multer';
 import imagesRouter from './routes/images';
+import { prisma } from './db';
+import { decodeImageData, imageDataMimeType } from './utils/imageData';
 import { logger } from './utils/logger';
 import { config } from './config';
 
@@ -16,6 +18,24 @@ export function createApp() {
 
   // Serve uploaded images so the frontend can display them
   app.use('/uploads', express.static(config.uploadDir));
+
+  // Fallback for uploads wiped from Render's ephemeral disk: resolve the
+  // image from the DB copy (imageData) instead of 404ing.
+  app.get('/uploads/:filename', async (req: Request, res: Response) => {
+    try {
+      const image = await prisma.image.findFirst({
+        where: { storedFilename: req.params.filename },
+        select: { imageData: true, mimeType: true },
+      });
+      if (!image?.imageData) return res.status(404).json({ error: 'Image not found' });
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('Content-Type', imageDataMimeType(image.imageData));
+      return res.send(decodeImageData(image.imageData));
+    } catch (err) {
+      logger.error('upload fallback failed', { filename: req.params.filename, error: String(err) });
+      return res.status(500).json({ error: 'Failed to serve image' });
+    }
+  });
 
   // Serve the built Vite frontend (production only)
   const frontendDist = path.resolve(__dirname, '../../frontend/dist');

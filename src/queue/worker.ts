@@ -2,6 +2,7 @@ import { Worker, Job } from 'bullmq';
 import { redisConnection, IMAGE_ANALYSIS_QUEUE, ImageAnalysisJobData } from './queue';
 import { prisma } from '../db';
 import { runAnalysis } from '../analysis';
+import { writeImageToDisk } from '../utils/imageData';
 import { logger } from '../utils/logger';
 import fs from 'fs';
 
@@ -26,7 +27,21 @@ async function processJob(job: Job<ImageAnalysisJobData>) {
   }
 
   if (!fs.existsSync(image.storagePath)) {
-    throw new Error(`Stored file missing on disk: ${image.storagePath}`);
+    // Render's ephemeral disk can wipe ./uploads between upload and
+    // processing. If we persisted the compressed copy, reconstruct the
+    // file so analysis can proceed instead of failing the job.
+    if (image.imageData) {
+      try {
+        writeImageToDisk(image.storagePath, image.imageData);
+        logger.warn('reconstructed image from database after disk wipe', { imageId });
+      } catch (err) {
+        throw new Error(
+          `Stored file missing on disk: ${image.storagePath} (and imageData reconstruction failed: ${err instanceof Error ? err.message : String(err)})`
+        );
+      }
+    } else {
+      throw new Error(`Stored file missing on disk: ${image.storagePath}`);
+    }
   }
 
   await prisma.image.update({

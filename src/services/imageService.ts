@@ -2,6 +2,7 @@ import fs from 'fs';
 import { prisma } from '../db';
 import { imageAnalysisQueue } from '../queue/queue';
 import { sha256File, perceptualHash as computePHash } from '../utils/hash';
+import { buildImageDataUri } from '../utils/imageData';
 import { logger } from '../utils/logger';
 
 export interface UploadedFileInfo {
@@ -35,6 +36,15 @@ export async function createImageRecord(file: UploadedFileInfo) {
     logger.warn('perceptual hash computation failed', { error: String(err) });
   }
 
+  let imageData: string | null = null;
+  try {
+    imageData = await buildImageDataUri(file.storagePath);
+  } catch (err) {
+    // Non-fatal: preview falls back to /uploads on disk. Some inputs may
+    // fail sharp's decode/recompress even when hashing succeeded.
+    logger.warn('imageData compression failed', { error: String(err) });
+  }
+
   const image = await prisma.image.create({
     data: {
       originalName: file.originalName,
@@ -44,6 +54,7 @@ export async function createImageRecord(file: UploadedFileInfo) {
       sizeBytes: file.sizeBytes,
       sha256Hash,
       perceptualHash: perceptualHashValue,
+      imageData,
       status: 'pending',
     },
   });
@@ -83,6 +94,7 @@ export async function listImages(params: { status?: string; limit: number; offse
         processedAt: true,
         failureReason: true,
         analysisResult: true,
+        imageData: true,
       },
     }),
     prisma.image.count({ where }),

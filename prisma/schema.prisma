@@ -38,6 +38,12 @@ model Image {
   sha256Hash      String
   perceptualHash  String?
 
+  // Compressed preview (JPEG, max 1200px) stored as a base64 data URI.
+  // Render's ephemeral filesystem wipes ./uploads on restart, so keeping a
+  // copy in Postgres lets previews and even analysis survive a disk wipe.
+  // Null for legacy rows that predate this column.
+  imageData       String?
+
   // Structured analysis output, one entry per check. Shape documented in
   // src/analysis/index.ts -> AnalysisReport.
   analysisResult  Json?
