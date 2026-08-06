@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { createImageRecord, getImageById, listImages } from '../services/imageService';
+import { createImageRecord, getImageById, listImages, clearAllImages } from '../services/imageService';
 import { logger } from '../utils/logger';
 
 export async function uploadImage(req: Request, res: Response) {
@@ -98,3 +98,14 @@ export async function listImagesHandler(req: Request, res: Response) {
   const { items, total } = await listImages({ status, limit, offset });
   return res.json({ items, total, limit, offset });
 }
+
+export async function clearImagesHandler(_req: Request, res: Response) {
+  try {
+    await clearAllImages();
+    return res.json({ message: 'All inspection records cleared successfully.' });
+  } catch (err) {
+    logger.error('failed to clear images', { error: String(err) });
+    return res.status(500).json({ error: 'Failed to clear records' });
+  }
+}
+

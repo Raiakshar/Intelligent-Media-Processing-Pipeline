@@ -6,6 +6,7 @@ import {
   getResults,
   getFailureReason,
   listImagesHandler,
+  clearImagesHandler,
 } from '../controllers/imageController';
 
 const router = Router();
@@ -15,6 +16,9 @@ router.post('/', upload.single('image'), uploadImage);
 
 // GET /images?status=pending&limit=20&offset=0
 router.get('/', listImagesHandler);
+
+// DELETE /images (Clears all records and uploads)
+router.delete('/', clearImagesHandler);
 
 // GET /images/:id/status
 router.get('/:id/status', getStatus);

@@ -44,6 +44,15 @@ export async function listImages({ status, limit = 20, offset = 0 } = {}) {
 }
 
 /**
+ * Delete / Clear all images and records.
+ */
+export async function clearImages() {
+  const res = await fetch(`${API_BASE}/images`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to clear records');
+  return res.json();
+}
+
+/**
  * Get processing status for a single image.
  */
 export async function getImageStatus(id) {

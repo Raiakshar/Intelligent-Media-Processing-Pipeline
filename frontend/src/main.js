@@ -11,6 +11,7 @@ import {
   getImageResults,
   getImageFailure,
   healthCheck,
+  clearImages,
   API_BASE,
 } from './api.js';
 
@@ -199,9 +200,14 @@ function renderApp() {
           <button class="segment-btn" data-filter="completed">COMPLETED</button>
           <button class="segment-btn" data-filter="failed">FAILED</button>
         </div>
-        <button class="refresh-trigger" id="refresh-trigger">
-          <span class="refresh-icon">↻</span> RE-SYNC DATA
-        </button>
+        <div style="display:flex; gap:0.5rem;">
+          <button class="refresh-trigger" id="clear-trigger" style="border-color: var(--status-fail-border); color: var(--status-fail);">
+            <span class="refresh-icon">🗑</span> CLEAR ALL
+          </button>
+          <button class="refresh-trigger" id="refresh-trigger">
+            <span class="refresh-icon">↻</span> RE-SYNC DATA
+          </button>
+        </div>
       </div>
 
       <!-- Vehicle Cards Inspection Grid -->
@@ -663,6 +669,18 @@ function bindEvents() {
       state.offset = 0;
       updateFilterButtons();
       loadInspectionData();
+    }
+  });
+
+  // Clear trigger
+  document.getElementById('clear-trigger').addEventListener('click', async () => {
+    if (!confirm('Are you sure you want to clear all inspection records?')) return;
+    try {
+      await clearImages();
+      showToast('All records cleared.', 'success');
+      await loadInspectionData();
+    } catch (e) {
+      showToast('Failed to clear records: ' + e.message, 'error');
     }
   });
 

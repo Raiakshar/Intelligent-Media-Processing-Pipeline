@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { prisma } from '../db';
 import { imageAnalysisQueue } from '../queue/queue';
 import { sha256File, perceptualHash as computePHash } from '../utils/hash';
@@ -88,3 +89,19 @@ export async function listImages(params: { status?: string; limit: number; offse
   ]);
   return { items, total };
 }
+
+export async function clearAllImages() {
+  const images = await prisma.image.findMany({ select: { storagePath: true } });
+  for (const img of images) {
+    try {
+      if (img.storagePath && fs.existsSync(img.storagePath)) {
+        fs.unlinkSync(img.storagePath);
+      }
+    } catch {
+      /* ignore file deletion errors */
+    }
+  }
+  await prisma.image.deleteMany({});
+  logger.info('all images cleared from database and storage');
+}
+
