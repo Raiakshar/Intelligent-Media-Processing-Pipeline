@@ -15,27 +15,34 @@ export function createApp() {
   app.use(cors());
   app.use(express.json());
 
-  // Serve uploaded images — disk first, then DB fallback for ephemeral hosts (Render)
-  app.use('/uploads', express.static(config.uploadDir));
-  app.get('/uploads/:filename', async (req: Request, res: Response) => {
-    // This only runs if express.static above didn't find the file on disk
+  // Serve uploaded images — disk first, DB fallback for ephemeral hosts like Render.
+  // Using a single middleware avoids express.static silently dropping to SPA fallback.
+  app.get('/uploads/:filename', async (req: Request, res: Response, next: NextFunction) => {
     const { filename } = req.params;
+    const diskPath = path.join(config.uploadDir, filename);
+    // 1️⃣ Try disk first (fast path, works in local dev)
+    if (fs.existsSync(diskPath)) {
+      return res.sendFile(diskPath, { root: '/' });
+    }
+    // 2️⃣ Disk file missing (Render restart wiped uploads/) — serve from DB
     try {
       const record = await getImageFileByFilename(filename);
       if (!record?.imageData) {
         return res.status(404).json({ error: 'Image not found' });
       }
-      // imageData is a data URI: "data:image/jpeg;base64,<base64>"
-      const [header, base64] = record.imageData.split(',');
+      // imageData stored as "data:image/jpeg;base64,<base64>"
+      const commaIdx = record.imageData.indexOf(',');
+      const header   = record.imageData.slice(0, commaIdx);
+      const base64   = record.imageData.slice(commaIdx + 1);
       const mimeMatch = header.match(/data:([^;]+);base64/);
-      const mimeType = mimeMatch ? mimeMatch[1] : (record.mimeType || 'image/jpeg');
-      const buffer = Buffer.from(base64, 'base64');
+      const mimeType  = mimeMatch ? mimeMatch[1] : (record.mimeType || 'image/jpeg');
+      const buffer    = Buffer.from(base64, 'base64');
       res.set('Content-Type', mimeType);
-      res.set('Cache-Control', 'public, max-age=31536000');
+      res.set('Cache-Control', 'public, max-age=31536000, immutable');
       return res.send(buffer);
     } catch (err) {
       logger.error('failed to serve image from DB', { filename, error: String(err) });
-      return res.status(500).json({ error: 'Failed to serve image' });
+      return next(err);
     }
   });
 
