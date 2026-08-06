@@ -1,6 +1,6 @@
 # Intelligent Media Processing Pipeline
 
-This is a vehicle photo inspection system I built from scratch. You upload a car image and it automatically does a bunch of checks in the background — reads the license plate using OCR, checks if the photo is blurry or too dark, catches duplicate submissions, and tries to detect if the image has been tampered with. Everything runs async so the upload response is instant and the heavy work happens in the background.
+A vehicle photo inspection system I built from scratch — you upload a car image and it runs a set of checks in the background: reads the license plate via OCR, flags blurry or poorly lit photos, catches duplicate submissions, and checks for signs of tampering. Uploads return instantly since all the analysis happens asynchronously in a background worker.
 
 Live demo: https://intelligent-media-processing-pipeline-q20l.onrender.com/
 
@@ -389,6 +389,18 @@ In compliance with assignment evaluation requirements, this project was co-engin
 - **Full-Frame OCR vs Bounding-Box Detection**: This project deliberately does **not** use heavy object detection models (like YOLO or SSD) in order to keep the system lightweight, fast, and 100% executable in Node.js without GPU dependencies. Instead, it runs Tesseract.js directly over the full image frame paired with `sharp` contrast normalization and regex pattern extraction. A future production extension could add a bounding-box cropping pre-step to isolate license plates prior to OCR.
 - **Duplicate Search Scalability**: Near-duplicate `aHash` comparison scans a rolling window of recent uploads (500 records). Production scale would leverage Vector ANN indexing (e.g., Milvus, `pgvector`) or Vantage Point Trees (VP-Trees) for O(log N) similarity search across millions of images.
 - **Client Polling vs Real-Time WebSockets / Webhooks**: The SPA dashboard uses short-polling (`GET /images/:id/status`) every 2 seconds. Production architectures would implement WebSockets (Socket.io) or webhook callbacks to push status transitions to clients instantly.
+
+---
+
+## Real-World Applicability
+
+The 8-check pipeline maps directly onto production problems that require this exact combination of automated verification:
+
+- **Insurance Claim Photo Intake**: Blur, brightness, and resolution checks instantly reject unusable submissions before reaching human adjusters. ELA tampering detection flags images edited to exaggerate damage, while duplicate hashing catches the same photo resubmitted across separate claims.
+- **Vehicle Registration & RTO Verification**: Instead of just recognizing generic text, the ALPR engine extracts and structurally validates registration plates against official Indian formats (`SS DD L(L) DDDD`), breaking down state, RTO, and series codes for automated verification.
+- **Marketplace Listing Moderation (e.g. Used-Car Platforms)**: Screenshot and re-photo heuristics identify photos captured off digital screens (a common pattern for unauthorized photo reuse), while perceptual hashing (`aHash`) prevents duplicate uploads across listings.
+
+Adapting the pipeline for any of these domain-specific use cases requires no architectural overhaul — the queue-driven worker model, isolated check execution, and structured JSON results easily support custom post-processing rules (such as auto-approving vs routing to manual review queues).
 
 ---
 
