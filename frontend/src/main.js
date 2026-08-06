@@ -455,7 +455,7 @@ async function openForensicModal(imageId) {
 
     splitBody.innerHTML = `
       <div class="pane-viewport">
-        <img class="inspection-canvas" src="${modalImgSrc}" 
+        <img class="inspection-canvas" src="${API_BASE}/uploads/${img.storedFilename}" 
              onerror="this.style.display='none'; this.outerHTML='<div class=\"modal-image-fallback\">📸 Image File Unavailable</div>';" />
         <div class="file-info-table">
           <div><div class="info-cell-label">FILE SIZE</div><div class="info-cell-val">${formatBytes(img.sizeBytes)}</div></div>

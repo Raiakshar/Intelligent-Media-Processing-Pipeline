@@ -58,51 +58,19 @@ export async function createImageRecord(file: UploadedFileInfo) {
       sha256Hash,
       perceptualHash: perceptualHashValue,
       imageData: imageDataBase64,
-      status: 'processing',
-      processingStartedAt: new Date(),
+      status: 'pending',
     },
   });
 
-  // Try queuing in BullMQ (if Redis active)
-  try {
-    await imageAnalysisQueue.add(
-      'analyze',
-      { imageId: image.id },
-      { jobId: image.id }
-    );
-  } catch { /* ignore Redis queue connection issue */ }
+  await imageAnalysisQueue.add(
+    'analyze',
+    { imageId: image.id },
+    { jobId: image.id } // idempotency: one job per image id, prevents accidental double-enqueue
+  );
 
-  // Execute analysis synchronously inline so results are instant and never stuck pending
-  try {
-    const { runAnalysis } = await import('../analysis');
-    const report = await runAnalysis({
-      imageId: image.id,
-      filePath: file.storagePath,
-      sha256Hash,
-      perceptualHash: perceptualHashValue,
-    });
+  logger.info('image uploaded and queued', { imageId: image.id, originalName: file.originalName });
 
-    const updated = await prisma.image.update({
-      where: { id: image.id },
-      data: {
-        status: 'completed',
-        processedAt: new Date(),
-        analysisResult: report as any,
-      },
-    });
-    return updated;
-  } catch (err) {
-    logger.error('sync analysis failed', { imageId: image.id, error: String(err) });
-    const updated = await prisma.image.update({
-      where: { id: image.id },
-      data: {
-        status: 'failed',
-        failureReason: String(err).slice(0, 500),
-        processedAt: new Date(),
-      },
-    });
-    return updated;
-  }
+  return image;
 }
 
 export async function getImageById(imageId: string) {
