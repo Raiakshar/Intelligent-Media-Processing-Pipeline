@@ -1,4 +1,5 @@
 import fs from 'fs';
+import sharp from 'sharp';
 import { prisma } from '../db';
 import { imageAnalysisQueue } from '../queue/queue';
 import { sha256File, perceptualHash as computePHash } from '../utils/hash';
@@ -35,6 +36,18 @@ export async function createImageRecord(file: UploadedFileInfo) {
     logger.warn('perceptual hash computation failed', { error: String(err) });
   }
 
+  let imageDataBase64: string | null = null;
+  try {
+    const fileBuffer = fs.readFileSync(file.storagePath);
+    const compressedBuffer = await sharp(fileBuffer)
+      .resize({ width: 1200, withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+    imageDataBase64 = `data:image/jpeg;base64,${compressedBuffer.toString('base64')}`;
+  } catch (err) {
+    logger.warn('failed to store base64 image data', { error: String(err) });
+  }
+
   const image = await prisma.image.create({
     data: {
       originalName: file.originalName,
@@ -44,6 +57,7 @@ export async function createImageRecord(file: UploadedFileInfo) {
       sizeBytes: file.sizeBytes,
       sha256Hash,
       perceptualHash: perceptualHashValue,
+      imageData: imageDataBase64,
       status: 'pending',
     },
   });
@@ -83,6 +97,7 @@ export async function listImages(params: { status?: string; limit: number; offse
         processedAt: true,
         failureReason: true,
         analysisResult: true,
+        imageData: true,   // base64 data URI — used by frontend for permanent image display
       },
     }),
     prisma.image.count({ where }),
@@ -104,4 +119,12 @@ export async function clearAllImages() {
   await prisma.image.deleteMany({});
   logger.info('all images cleared from database and storage');
 }
+
+export async function getImageFileByFilename(storedFilename: string) {
+  return prisma.image.findFirst({
+    where: { storedFilename },
+    select: { storagePath: true, mimeType: true, imageData: true },
+  });
+}
+
 

@@ -300,11 +300,15 @@ function renderVehicleCard(img) {
     `;
   }
 
+  // Use DB imageData (base64) as primary src — works permanently on Render.
+  // Fall back to /uploads/ URL for local dev where disk files still exist.
+  const imgSrc = img.imageData || `${API_BASE}/uploads/${img.storedFilename}`;
+
   return `
     <div class="vehicle-card" onclick="window.__openForensicModal('${img.id}')">
       <div class="card-viewport">
         <div class="card-image-fallback">🚗</div>
-        <img src="${API_BASE}/uploads/${img.storedFilename}" alt="${img.originalName}"
+        <img src="${imgSrc}" alt="${img.originalName}"
              onerror="this.style.display='none'; this.previousElementSibling.style.display='flex';" />
         <span class="card-status-pill ${img.status}">${img.status}</span>
         ${plateBadgeHtml}
@@ -361,11 +365,14 @@ async function openForensicModal(imageId) {
 
   if (!img) return;
 
+  // Use DB imageData as primary — permanent across Render restarts
+  const modalImgSrc = img.imageData || `${API_BASE}/uploads/${img.storedFilename}`;
+
   // Pending / Processing view
   if (img.status === 'pending' || img.status === 'processing') {
     splitBody.innerHTML = `
       <div class="pane-viewport">
-        <img class="inspection-canvas" src="${API_BASE}/uploads/${img.storedFilename}" 
+        <img class="inspection-canvas" src="${modalImgSrc}" 
              onerror="this.style.display='none'; this.outerHTML='<div class=\"modal-image-fallback\">📸 Image File Unavailable</div>';" />
         <div class="file-info-table">
           <div><div class="info-cell-label">FILE SIZE</div><div class="info-cell-val">${formatBytes(img.sizeBytes)}</div></div>
@@ -388,7 +395,7 @@ async function openForensicModal(imageId) {
     try { failure = await getImageFailure(imageId); } catch { /* ignore */ }
     splitBody.innerHTML = `
       <div class="pane-viewport">
-        <img class="inspection-canvas" src="${API_BASE}/uploads/${img.storedFilename}" 
+        <img class="inspection-canvas" src="${modalImgSrc}" 
              onerror="this.style.display='none'; this.outerHTML='<div class=\"modal-image-fallback\">📸 Image File Unavailable</div>';" />
       </div>
       <div class="pane-diagnostics">
