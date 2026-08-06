@@ -33,6 +33,30 @@ async function makeNoisyImage(name: string, opts: { width: number; height: numbe
   return filePath;
 }
 
+async function makeTwoToneImage(name: string, width: number, height: number, darkOnLeft: boolean) {
+  // Left/right split: one side near-black, the other near-white. Inverting the
+  // layout produces visually opposite images so aHash distances are meaningful.
+  const filePath = path.join(tmpDir, name);
+  const buffer = Buffer.alloc(width * height * 3);
+  const dark = [10, 10, 10];
+  const light = [245, 245, 245];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const left = x < width / 2;
+      const useDark = darkOnLeft ? left : !left;
+      const c = useDark ? dark : light;
+      const i = (y * width + x) * 3;
+      buffer[i] = c[0];
+      buffer[i + 1] = c[1];
+      buffer[i + 2] = c[2];
+    }
+  }
+  await sharp(buffer, { raw: { width, height, channels: 3 } })
+    .jpeg({ quality: 90 })
+    .toFile(filePath);
+  return filePath;
+}
+
 afterAll(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
@@ -103,10 +127,13 @@ describe('hashing utilities', () => {
   });
 
   it('perceptualHash gives large hamming distance for very different images', async () => {
-    const fileA = await makeSolidImage('phashBlack.jpg', { width: 400, height: 300, color: '#000000' });
-    const fileB = await makeSolidImage('phashWhite.jpg', { width: 400, height: 300, color: '#ffffff' });
-    const hashA = await perceptualHash(fileA);
-    const hashB = await perceptualHash(fileB);
-    expect(hammingDistance(hashA, hashB)).toBeGreaterThan(30);
+    // Solid-color fixtures would be degenerate: aHash of any uniform image is
+    // all-ones (every pixel >= mean), so black vs white both hash to the same
+    // value. Use genuinely different two-tone layouts instead.
+    const halfLeft = await makeTwoToneImage('phashLeft.jpg', 400, 300, true);
+    const halfRight = await makeTwoToneImage('phashRight.jpg', 400, 300, false);
+    const hashA = await perceptualHash(halfLeft);
+    const hashB = await perceptualHash(halfRight);
+    expect(hammingDistance(hashA, hashB)).toBeGreaterThan(20);
   });
 });
