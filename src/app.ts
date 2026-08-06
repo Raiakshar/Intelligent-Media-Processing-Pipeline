@@ -7,6 +7,7 @@ import multer from 'multer';
 import imagesRouter from './routes/images';
 import { logger } from './utils/logger';
 import { config } from './config';
+import { getImageFileByFilename } from './services/imageService';
 
 export function createApp() {
   const app = express();
@@ -14,8 +15,29 @@ export function createApp() {
   app.use(cors());
   app.use(express.json());
 
-  // Serve uploaded images so the frontend can display them
+  // Serve uploaded images — disk first, then DB fallback for ephemeral hosts (Render)
   app.use('/uploads', express.static(config.uploadDir));
+  app.get('/uploads/:filename', async (req: Request, res: Response) => {
+    // This only runs if express.static above didn't find the file on disk
+    const { filename } = req.params;
+    try {
+      const record = await getImageFileByFilename(filename);
+      if (!record?.imageData) {
+        return res.status(404).json({ error: 'Image not found' });
+      }
+      // imageData is a data URI: "data:image/jpeg;base64,<base64>"
+      const [header, base64] = record.imageData.split(',');
+      const mimeMatch = header.match(/data:([^;]+);base64/);
+      const mimeType = mimeMatch ? mimeMatch[1] : (record.mimeType || 'image/jpeg');
+      const buffer = Buffer.from(base64, 'base64');
+      res.set('Content-Type', mimeType);
+      res.set('Cache-Control', 'public, max-age=31536000');
+      return res.send(buffer);
+    } catch (err) {
+      logger.error('failed to serve image from DB', { filename, error: String(err) });
+      return res.status(500).json({ error: 'Failed to serve image' });
+    }
+  });
 
   // Serve the built Vite frontend (production only)
   const frontendDist = path.resolve(__dirname, '../../frontend/dist');
