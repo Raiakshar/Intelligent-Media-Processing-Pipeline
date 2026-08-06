@@ -5,7 +5,7 @@ It's designed to handle a lot of uploads at once without slowing down — each p
 
 ---
 - Deployed Link :
-https://intelligent-media-processing-pipeline-q20l.onrender.com/
+https://intelligent-media-processing-pipeline-1.onrender.com/
 
 ## Project Outcomes & System Screenshots
 
